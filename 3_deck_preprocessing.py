@@ -63,11 +63,15 @@ def preprocess_decklists(input_dir="deck_lists", output_dir="processed_decklists
                     # Add the card with numbered suffix for each copy
                     for i in range(count):
                         # Get the current count for this card
-                        current_count = card_counts.get(card_name, 0) + 1
-                        card_counts[card_name] = current_count
+                        if count>1:
+                            current_count = card_counts.get(card_name, 0) + 1
+                            card_counts[card_name] = current_count
 
-                        # Create the numbered card name
-                        numbered_card_name = f"{card_name}{current_count}"
+                            # Create the numbered card name
+                            numbered_card_name = f"{card_name}{current_count}"
+                        else:
+                            numbered_card_name = card_name
+
                         processed_cards.append(numbered_card_name)
                 else:
                     # Check if this might be a section header that's not sideboard or stickers

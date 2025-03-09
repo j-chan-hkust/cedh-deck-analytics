@@ -50,6 +50,99 @@ def read_decklist(filepath):
         print(f"Error reading file {filepath}: {e}")
         return []
 
+def create_spice_tags(card_df, output_file="tagged_cards.txt"):
+    """
+    Create spice tags for cards in the top 20% of the list based on appearance counts.
+    Uses average power instead of power_sum for ranking.
+    Ignores cards with numbers appended at the end.
+    Append these tags to the existing tagged_cards.txt file.
+    If a card already exists in the file, append the spice tag to that entry.
+
+    Args:
+        card_df: DataFrame containing card data with average_power and appearance_count
+        output_file: File where tagged cards will be appended
+    """
+    # Filter out cards with numbers at the end (e.g., Mountain1)
+    filtered_df = card_df[~card_df.index.str.match(r'.*\d+$')].copy()
+
+    # Sort by average_power (descending) to get the complete ordered list
+    sorted_df = filtered_df.sort_values('average_power', ascending=False).copy()
+
+    # Calculate the cutoff for top 20%
+    top_20_percent_cutoff = int(len(sorted_df) * 0.2)
+    top_cards = sorted_df.iloc[:top_20_percent_cutoff].copy()
+
+    # Apply tags based on appearance counts
+    def assign_spice_tag(appearances):
+        if appearances < 3:
+            return "#high_spice"
+        elif appearances <= 10:
+            return "#medium_spice"
+        else:
+            return "#low_spice"
+
+    top_cards['spice_tag'] = top_cards['appearance_count'].apply(assign_spice_tag)
+
+    # Create a dictionary of cards with their spice tags
+    spice_tags = {card: tag for card, tag in zip(top_cards.index, top_cards['spice_tag'])}
+
+    # Check if the output file exists
+    if os.path.exists(output_file):
+        # Read the existing file
+        with open(output_file, 'r', encoding='utf-8') as f:
+            existing_lines = f.readlines()
+
+        # Process existing lines
+        updated_lines = []
+        cards_found = set()
+
+        for line in existing_lines:
+            line = line.strip()
+            if not line:
+                updated_lines.append(line)
+                continue
+
+            # Extract card name (handle both formats: "Card Name #tag" and "N Card Name #tag")
+            parts = line.split()
+            if parts[0].isdigit():  # Format: "N Card Name #tag"
+                card_name = ' '.join(parts[1:-1]) if len(parts) > 2 else parts[1]
+            else:  # Format: "Card Name #tag"
+                card_name = ' '.join(parts[:-1]) if len(parts) > 1 else parts[0]
+
+            # Check if this card has a spice tag
+            if card_name in spice_tags:
+                # Append the spice tag to the existing line
+                updated_line = f"{line} {spice_tags[card_name]}"
+                updated_lines.append(updated_line)
+                cards_found.add(card_name)
+            else:
+                # Keep the line as is
+                updated_lines.append(line)
+
+        # Add new cards with spice tags that weren't in the file
+        for card, tag in spice_tags.items():
+            if card not in cards_found:
+                updated_lines.append(f"{card} {tag}")
+
+        # Write back to the file
+        with open(output_file, 'w', encoding='utf-8') as f:
+            for line in updated_lines:
+                f.write(f"{line}\n")
+    else:
+        # If file doesn't exist, create it with just the spice-tagged cards
+        with open(output_file, 'w', encoding='utf-8') as f:
+            for card, tag in spice_tags.items():
+                f.write(f"{card} {tag}\n")
+
+    # Print summary
+    print(f"\nSpice tag summary for top 20% cards ({len(top_cards)} cards):")
+    print(f"  #high_spice (< 3 appearances): {sum(top_cards['spice_tag'] == '#high_spice')}")
+    print(f"  #medium_spice (3-10 appearances): {sum(top_cards['spice_tag'] == '#medium_spice')}")
+    print(f"  #low_spice (> 10 appearances): {sum(top_cards['spice_tag'] == '#low_spice')}")
+    print(f"\nSpice tags appended to {output_file}")
+
+    return top_cards
+
 def main():
     # Load the CSV file
     try:
@@ -193,6 +286,9 @@ def main():
         avg_df.to_csv('card_power_by_average.csv')
         reliable_avg_df.to_csv('card_power_by_reliable_average.csv')
         print(f"Analysis saved to CSV files")
+
+        # Create spice tags for top 20% cards using average power
+        create_spice_tags(card_df)
 
         # Visualize the power law function with center at 0.25
         win_rates = np.linspace(0, 1, 100)

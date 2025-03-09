@@ -1,76 +1,122 @@
 import os
+import sys
 import glob
+import re
 from collections import Counter
 
-def read_deck_file(file_path):
-    """Read a deck file and return a set of unique cards."""
-    with open(file_path, 'r') as file:
-        # Read all lines and strip whitespace
-        cards = [line.strip() for line in file.readlines() if line.strip()]
-    return set(cards)
+def analyze_card_usage(input_dir="processed_decklists", output_file="tagged_cards.txt"):
+    """
+    Analyze the usage rate of cards across deck lists and output a single file
+    with cards tagged based on their usage percentage:
+    - 100% usage: #core
+    - 95% usage: #essential
+    - 90% usage: #common
 
-def main():
-    """Find cards that appear in all decks, 95% of decks, and 90% of decks."""
-    # Get all deck files from the processed_decklists directory
-    deck_files = glob.glob("processed_decklists/*.txt")
-    total_decks = len(deck_files)
+    For cards with numbered suffixes (e.g., mountain1, mountain2), combine them
+    and show the total count in the output.
 
-    if total_decks == 0:
-        print("No deck files were found.")
+    Args:
+        input_dir: Directory containing the processed deck list files
+        output_file: File where tagged cards will be saved
+    """
+    # Check if input directory exists
+    if not os.path.exists(input_dir):
+        print(f"Error: Input directory '{input_dir}' does not exist")
         return
 
-    # Read all deck files
-    all_decks = []
-    card_counter = Counter()
+    # Get all text files in the input directory
+    deck_files = glob.glob(os.path.join(input_dir, "*.txt"))
+    print(f"Found {len(deck_files)} processed deck list files to analyze")
 
+    if not deck_files:
+        print("No deck files found to analyze.")
+        return
+
+    # Count cards across all decks
+    card_counts = Counter()
+    total_decks = len(deck_files)
+
+    # Process each deck file
     for file_path in deck_files:
-        cards = read_deck_file(file_path)
-        print(f"Deck {os.path.basename(file_path)}: {len(cards)} unique cards")
-        all_decks.append(cards)
+        file_name = os.path.basename(file_path)
+        print(f"Analyzing: {file_name}")
 
-        # Count occurrences of each card
-        for card in cards:
-            card_counter[card] += 1
+        try:
+            # Read the deck list file
+            with open(file_path, 'r', encoding='utf-8') as f:
+                cards = [line.strip() for line in f if line.strip()]
 
-    # Calculate thresholds
-    threshold_100 = total_decks
-    threshold_95 = int(total_decks * 0.95)
-    threshold_90 = int(total_decks * 0.90)
+            #todo this doesn't work quite right at the moment
 
-    # Find cards that meet each threshold
-    cards_100_percent = {card for card, count in card_counter.items() if count >= threshold_100}
-    cards_95_percent = {card for card, count in card_counter.items() if count >= threshold_95}
-    cards_90_percent = {card for card, count in card_counter.items() if count >= threshold_90}
+            # Normalize card names (remove numeric suffixes) and count unique base cards
+            base_cards = set()
+            for card in cards:
+                # Extract the base card name (remove numeric suffix)
+                base_card = re.sub(r'(\d+)$', '', card)
+                base_cards.add(base_card)
 
-    # Print results
-    print(f"\nAnalyzed {total_decks} decks")
+            # Count each unique base card once per deck
+            for card in base_cards:
+                card_counts[card] += 1
 
-    print(f"\nFound {len(cards_100_percent)} cards that appear in 100% of decks:")
-    for card in sorted(cards_100_percent):
-        print(f"- {card}")
+        except Exception as e:
+            print(f"  Error analyzing {file_name}: {e}")
 
-    print(f"\nFound {len(cards_95_percent)} cards that appear in at least 95% of decks:")
-    for card in sorted(cards_95_percent):
-        print(f"- {card}")
+    print(f"\nAnalyzed {total_decks} decks with {len(card_counts)} unique cards")
 
-    print(f"\nFound {len(cards_90_percent)} cards that appear in at least 90% of decks:")
-    for card in sorted(cards_90_percent):
-        print(f"- {card}")
+    # Count how many of each card appears in each deck
+    card_quantities = {}
+    for file_path in deck_files:
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                cards = [line.strip() for line in f if line.strip()]
 
-    # Save results to files
-    with open("cards_100_percent.txt", "w") as f:
-        for card in sorted(cards_100_percent):
-            f.write(f"{card}\n")
+            # Count cards in this deck
+            deck_card_counts = Counter()
+            for card in cards:
+                base_card = re.sub(r'(\d+)$', '', card)
+                deck_card_counts[base_card] += 1
 
-    with open("cards_95_percent.txt", "w") as f:
-        for card in sorted(cards_95_percent):
-            f.write(f"{card}\n")
+            # Update the maximum count for each card
+            for card, count in deck_card_counts.items():
+                if card not in card_quantities or count > card_quantities[card]:
+                    card_quantities[card] = count
 
-    with open("cards_90_percent.txt", "w") as f:
-        for card in sorted(cards_90_percent):
-            f.write(f"{card}\n")
+        except Exception as e:
+            print(f"  Error counting quantities in {os.path.basename(file_path)}: {e}")
 
-    print(f"\nResults saved to cards_100_percent.txt, cards_95_percent.txt, and cards_90_percent.txt")
+    # Calculate usage percentages and assign tags
+    tagged_cards = []
+    for card, count in card_counts.items():
+        usage_percent = (count / total_decks) * 100
+        quantity = card_quantities.get(card, 1)
+
+        if usage_percent >= 100:
+            tagged_cards.append((card, quantity, usage_percent, "#core"))
+        elif usage_percent >= 95:
+            tagged_cards.append((card, quantity, usage_percent, "#essential"))
+        elif usage_percent >= 90:
+            tagged_cards.append((card, quantity, usage_percent, "#common"))
+
+    # Sort cards by usage percentage (highest first)
+    tagged_cards.sort(key=lambda x: x[2], reverse=True)
+
+    # Write results to output file
+    with open(output_file, 'w', encoding='utf-8') as f:
+        for card, quantity, _, tag in tagged_cards:
+            f.write(f"{quantity} {card} {tag}\n")
+
+    # Print summary
+    print(f"\nTagged cards summary:")
+    print(f"  #core cards (100% usage): {sum(1 for _, _, _, tag in tagged_cards if tag == '#core')}")
+    print(f"  #essential cards (95-99% usage): {sum(1 for _, _, _, tag in tagged_cards if tag == '#essential')}")
+    print(f"  #common cards (90-94% usage): {sum(1 for _, _, _, tag in tagged_cards if tag == '#common')}")
+    print(f"\nResults saved to {output_file}")
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 2:
+        analyze_card_usage(sys.argv[1], sys.argv[2])
+    elif len(sys.argv) > 1:
+        analyze_card_usage(sys.argv[1])
+    else:
+        analyze_card_usage()

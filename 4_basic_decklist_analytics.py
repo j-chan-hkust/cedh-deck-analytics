@@ -4,6 +4,8 @@ import glob
 import re
 from collections import Counter
 
+#todo: maybe core should be 99% usage rate, not 100%
+
 def analyze_card_usage(input_dir="processed_decklists", output_file="tagged_cards.txt"):
     """
     Analyze the usage rate of cards across deck lists and output a single file

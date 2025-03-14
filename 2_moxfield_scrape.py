@@ -162,7 +162,7 @@ def scrape_deck_pages(csv_file_path="edh16_scrape.csv", output_dir="deck_lists")
                         return
 
                 # Add a random delay to avoid being blocked
-                delay = random.uniform(5, 10)
+                delay = random.uniform(2, 5)
                 print(f"Waiting {delay:.2f} seconds before request...")
                 time.sleep(delay)
 
@@ -173,6 +173,17 @@ def scrape_deck_pages(csv_file_path="edh16_scrape.csv", output_dir="deck_lists")
                 # Wait for content to load
                 print("Waiting for page content to load...")
                 try:
+                    # Check for error page elements
+                    error_element = driver.find_element(By.XPATH,
+                                                        "//*[contains(text(), 'Page Not Found') or contains(text(), 'does not exist on Moxfield')]")
+                    print(f"Skipping deleted deck: {url}")
+                    with open(summary_file, 'a', encoding='utf-8') as f:
+                        f.write(
+                            f'"{title}",{placement},{players},{wins},{losses},{draws},"{url}","{deck_id}","Skipped - Page Not Found"\n')
+                    continue
+                except:
+                    pass  # Proceed if no error elements found
+                try:
                     # Wait up to 45 seconds for the deck name to appear
                     WebDriverWait(driver, 45).until(
                         EC.presence_of_element_located((By.CLASS_NAME, "deckheader-name"))
@@ -181,7 +192,7 @@ def scrape_deck_pages(csv_file_path="edh16_scrape.csv", output_dir="deck_lists")
                 except Exception as e:
                     print(f"Timeout waiting for content to load: {e}")
                     # Try waiting a bit more
-                    time.sleep(7)
+                    time.sleep(3)
 
                 # Look for the "More" button and click it
                 try:
@@ -190,14 +201,14 @@ def scrape_deck_pages(csv_file_path="edh16_scrape.csv", output_dir="deck_lists")
                     )
                     more_button.click()
                     print("Clicked on 'More' button")
-                    time.sleep(2)  # Wait for dropdown to appear
+                    time.sleep(1)  # Wait for dropdown to appear
 
                     # Look for the Export option in the dropdown
                     export_options = driver.find_elements(By.XPATH, "//a[contains(text(), 'Export')]")
                     if export_options:
                         export_options[0].click()
                         print("Clicked on 'Export' option")
-                        time.sleep(2)  # Wait for the export modal to appear
+                        time.sleep(1)  # Wait for the export modal to appear
 
                         # Wait for the text area to be populated
                         try:
@@ -273,7 +284,7 @@ def scrape_deck_pages(csv_file_path="edh16_scrape.csv", output_dir="deck_lists")
                     return
 
                 # Wait a bit longer before retrying
-                time.sleep(random.uniform(10, 15))
+                time.sleep(random.uniform(4, 8))
 
                 if retry == max_retries - 1:  # Only write to summary on last retry
                     with open(summary_file, 'a', encoding='utf-8') as f:
@@ -286,7 +297,7 @@ def scrape_deck_pages(csv_file_path="edh16_scrape.csv", output_dir="deck_lists")
                         f.write(f'"{title}",{placement},{players},{wins},{losses},{draws},"{url}","{deck_id}","Failed - General error"\n')
 
                 # Wait before retrying
-                time.sleep(random.uniform(7, 12))
+                time.sleep(random.uniform(4, 8))
 
     # Close the WebDriver
     try:

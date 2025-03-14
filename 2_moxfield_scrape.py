@@ -14,6 +14,8 @@ from selenium.webdriver.common.by import By
 from selenium.common.exceptions import WebDriverException, SessionNotCreatedException, InvalidSessionIdException
 from selenium_stealth import stealth
 
+#todo: more elegantly handle invalid links - you should know when to give up if the content is Page Not Found
+
 def scrape_deck_pages(csv_file_path="edh16_scrape.csv", output_dir="deck_lists"):
     # Create output directory if it doesn't exist
     if not os.path.exists(output_dir):
@@ -32,8 +34,8 @@ def scrape_deck_pages(csv_file_path="edh16_scrape.csv", output_dir="deck_lists")
         return
 
     # Check if the Weblink column exists
-    if 'Weblink' not in df.columns:
-        print("Error: CSV file does not contain a 'Weblink' column.")
+    if 'url' not in df.columns:
+        print("Error: CSV file does not contain a 'url' column.")
         return
 
     # Create or load summary file
@@ -105,13 +107,13 @@ def scrape_deck_pages(csv_file_path="edh16_scrape.csv", output_dir="deck_lists")
 
     # Iterate through each URL in the DataFrame
     for index, row in df.iterrows():
-        url = row['Weblink']
-        title = row['Title']
-        placement = row.get('Placement', 'Unknown')
-        players = row.get('Total Players', 'Unknown')
-        wins = row.get('Wins', 'Unknown')
-        losses = row.get('Losses', 'Unknown')
-        draws = row.get('Draws', 'Unknown')
+        url = row['url']
+        title = row['name']
+        placement = row.get('placement', 'Unknown')
+        players = row.get('total_players', 'Unknown')
+        wins = row.get('wins', 'Unknown')
+        losses = row.get('losses', 'Unknown')
+        draws = row.get('draws', 'Unknown')
 
         # Extract deck ID from URL
         deck_id = extract_deck_id(url)

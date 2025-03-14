@@ -3,6 +3,7 @@ import numpy as np
 import os
 import re
 import matplotlib.pyplot as plt
+from collections import defaultdict
 
 def power_law_weight(win_rate, power=2, center=0.25):
     """
@@ -10,33 +11,45 @@ def power_law_weight(win_rate, power=2, center=0.25):
     Preserves sign while emphasizing differences at high win rates.
     Center parameter determines what win rate gives a weight of 0.
     """
-    shifted = win_rate - center
-    return np.sign(shifted) * np.abs(shifted) ** power
+    try:
+        shifted = win_rate - center
+        return np.sign(shifted) * np.abs(shifted) ** power
+    except Exception as e:
+        print(f"Error calculating power law weight: {e}")
+        return 0  # Return a neutral weight on error
 
 def extract_deck_id(url):
     """Extract the deck ID from the Moxfield URL"""
-    # Extract the part after the last slash
-    match = re.search(r'/([^/]+)$', url)
-    if match:
-        return match.group(1)
-    return None
+    try:
+        # Extract the part after the last slash
+        match = re.search(r'/([^/]+)$', url)
+        if match:
+            return match.group(1)
+        return None
+    except Exception as e:
+        print(f"Error extracting deck ID: {e}")
+        return None
 
 def find_decklist_file(deck_id):
     """Find the decklist file that contains the deck ID in its name"""
-    processed_decklists_dir = "processed_decklists"
+    try:
+        processed_decklists_dir = "processed_decklists"
 
-    # Check if directory exists
-    if not os.path.isdir(processed_decklists_dir):
-        print(f"Warning: Directory {processed_decklists_dir} not found")
+        # Check if directory exists
+        if not os.path.isdir(processed_decklists_dir):
+            print(f"Warning: Directory {processed_decklists_dir} not found")
+            return None
+
+        # List all files in the directory
+        for filename in os.listdir(processed_decklists_dir):
+            if deck_id in filename:
+                return os.path.join(processed_decklists_dir, filename)
+
+        print(f"Warning: No decklist file found containing ID {deck_id}")
         return None
-
-    # List all files in the directory
-    for filename in os.listdir(processed_decklists_dir):
-        if deck_id in filename:
-            return os.path.join(processed_decklists_dir, filename)
-
-    print(f"Warning: No decklist file found containing ID {deck_id}")
-    return None
+    except Exception as e:
+        print(f"Error finding decklist file for {deck_id}: {e}")
+        return None
 
 def read_decklist(filepath):
     """Read the decklist file"""
@@ -57,91 +70,259 @@ def create_spice_tags(card_df, output_file="tagged_cards.txt"):
     Ignores cards with numbers appended at the end.
     Append these tags to the existing tagged_cards.txt file.
     If a card already exists in the file, append the spice tag to that entry.
+    Also adds #potential_traps tag for cards with negative average score appearing in >20% of decks.
+    Adds #bad_cards tag for cards in the bottom 20% of average scores.
 
     Args:
         card_df: DataFrame containing card data with average_power and appearance_count
         output_file: File where tagged cards will be appended
     """
-    # Filter out cards with numbers at the end (e.g., Mountain1)
-    filtered_df = card_df[~card_df.index.str.match(r'.*\d+$')].copy()
+    try:
+        # Handle empty dataframe
+        if card_df.empty:
+            print("No cards to process for spice tags")
+            return pd.DataFrame()
 
-    # Sort by average_power (descending) to get the complete ordered list
-    sorted_df = filtered_df.sort_values('average_power', ascending=False).copy()
+        # Filter out cards with numbers at the end (e.g., Mountain1)
+        filtered_df = card_df.copy()
+        filtered_indices = []
 
-    # Calculate the cutoff for top 20%
-    top_20_percent_cutoff = int(len(sorted_df) * 0.2)
-    top_cards = sorted_df.iloc[:top_20_percent_cutoff].copy()
+        for card_name in filtered_df.index:
+            # Check if the card name ends with a number
+            if re.search(r'\d+$', card_name):
+                filtered_indices.append(card_name)
 
-    # Apply tags based on appearance counts
-    def assign_spice_tag(appearances):
-        if appearances < 3:
-            return "#high_spice"
-        elif appearances <= 10:
-            return "#medium_spice"
-        else:
-            return "#low_spice"
+        # Remove cards with numbers at the end
+        filtered_df = filtered_df.drop(filtered_indices)
 
-    top_cards['spice_tag'] = top_cards['appearance_count'].apply(assign_spice_tag)
+        print(f"Filtered out {len(filtered_indices)} cards with numbers at the end")
 
-    # Create a dictionary of cards with their spice tags
-    spice_tags = {card: tag for card, tag in zip(top_cards.index, top_cards['spice_tag'])}
+        # Handle empty dataframe after filtering
+        if filtered_df.empty:
+            print("No cards left after filtering")
+            return pd.DataFrame()
 
-    # Check if the output file exists
-    if os.path.exists(output_file):
-        # Read the existing file
-        with open(output_file, 'r', encoding='utf-8') as f:
-            existing_lines = f.readlines()
-
-        # Process existing lines
-        updated_lines = []
-        cards_found = set()
-
-        for line in existing_lines:
-            line = line.strip()
-            if not line:
-                updated_lines.append(line)
-                continue
-
-            # Extract card name (handle both formats: "Card Name #tag" and "N Card Name #tag")
-            parts = line.split()
-            if parts[0].isdigit():  # Format: "N Card Name #tag"
-                card_name = ' '.join(parts[1:-1]) if len(parts) > 2 else parts[1]
-            else:  # Format: "Card Name #tag"
-                card_name = ' '.join(parts[:-1]) if len(parts) > 1 else parts[0]
-
-            # Check if this card has a spice tag
-            if card_name in spice_tags:
-                # Append the spice tag to the existing line
-                updated_line = f"{line} {spice_tags[card_name]}"
-                updated_lines.append(updated_line)
-                cards_found.add(card_name)
+        # Ensure average_power column exists and has valid values
+        if 'average_power' not in filtered_df.columns:
+            print("Warning: average_power column not found, calculating it")
+            if 'power_law_sum' in filtered_df.columns and 'appearance_count' in filtered_df.columns:
+                filtered_df['average_power'] = filtered_df['power_law_sum'] / filtered_df['appearance_count'].replace(0, 1)
             else:
-                # Keep the line as is
-                updated_lines.append(line)
+                print("Error: Cannot calculate average_power, required columns missing")
+                return pd.DataFrame()
 
-        # Add new cards with spice tags that weren't in the file
-        for card, tag in spice_tags.items():
-            if card not in cards_found:
-                updated_lines.append(f"{card} {tag}")
+        # Replace NaN values with 0
+        filtered_df['average_power'] = filtered_df['average_power'].fillna(0)
 
-        # Write back to the file
-        with open(output_file, 'w', encoding='utf-8') as f:
-            for line in updated_lines:
-                f.write(f"{line}\n")
-    else:
-        # If file doesn't exist, create it with just the spice-tagged cards
-        with open(output_file, 'w', encoding='utf-8') as f:
-            for card, tag in spice_tags.items():
-                f.write(f"{card} {tag}\n")
+        # Sort by average_power (descending) to get the complete ordered list
+        sorted_df = filtered_df.sort_values('average_power', ascending=False).copy()
 
-    # Print summary
-    print(f"\nSpice tag summary for top 20% cards ({len(top_cards)} cards):")
-    print(f"  #high_spice (< 3 appearances): {sum(top_cards['spice_tag'] == '#high_spice')}")
-    print(f"  #medium_spice (3-10 appearances): {sum(top_cards['spice_tag'] == '#medium_spice')}")
-    print(f"  #low_spice (> 10 appearances): {sum(top_cards['spice_tag'] == '#low_spice')}")
-    print(f"\nSpice tags appended to {output_file}")
+        # Calculate the cutoff for top 20%
+        top_20_percent_cutoff = max(1, int(len(sorted_df) * 0.2))  # Ensure at least 1 card
+        top_cards = sorted_df.iloc[:top_20_percent_cutoff].copy()
 
-    return top_cards
+        # Calculate the cutoff for bottom 20%
+        bottom_20_percent_cutoff = max(1, int(len(sorted_df) * 0.2))  # Ensure at least 1 card
+        bottom_cards = sorted_df.iloc[-bottom_20_percent_cutoff:].copy()
+        bottom_threshold = bottom_cards['average_power'].max()
+
+        # Calculate the total number of decks
+        # This should be the total number of unique decks, not the sum of appearance counts
+        total_decks = len(pd.unique(filtered_df['appearance_count']))
+        deck_threshold = 0.2 * total_decks  # 20% of total decks
+
+        # Debug information
+        print(f"Total unique decks: {total_decks}")
+        print(f"Deck threshold (20%): {deck_threshold}")
+        print(f"Bottom score threshold: {bottom_threshold}")
+
+        # Apply tags based on appearance counts
+        def assign_spice_tag(appearances):
+            if pd.isna(appearances):
+                return "#medium_spice"  # Default tag for missing data
+            if appearances < 3:
+                return "#high_spice"
+            elif appearances <= 10:
+                return "#medium_spice"
+            else:
+                return "#low_spice"
+
+        # Ensure appearance_count column exists
+        if 'appearance_count' not in top_cards.columns:
+            print("Warning: appearance_count column not found, using default values")
+            top_cards['appearance_count'] = 5  # Default middle value
+
+        top_cards['spice_tag'] = top_cards['appearance_count'].apply(assign_spice_tag)
+
+        # Create a dictionary of cards with their spice tags
+        spice_tags = {card: tag for card, tag in zip(top_cards.index, top_cards['spice_tag'])}
+
+        # Add potential_traps and bad_cards tags
+        additional_tags = {}
+
+        # Debug counters
+        potential_trap_candidates = 0
+        bad_card_candidates = 0
+
+        for card, row in filtered_df.iterrows():
+            tags = []
+
+            # Debug output for some cards
+            if card in top_cards.index[:5] or card in bottom_cards.index[:5]:
+                print(f"Card: {card}, Appearances: {row['appearance_count']}, Avg Power: {row['average_power']}")
+
+            # Tag cards with high appearance rate but negative average score
+            # Use absolute count comparison instead of percentage
+            if row['appearance_count'] > deck_threshold and row['average_power'] < 0:
+                tags.append("#potential_traps")
+                potential_trap_candidates += 1
+                print(f"Potential trap: {card} - Appearances: {row['appearance_count']}, Avg Power: {row['average_power']}")
+
+            # Tag cards in the bottom 20% of average scores
+            if row['average_power'] <= bottom_threshold:
+                tags.append("#bad_cards")
+                bad_card_candidates += 1
+
+            if tags:
+                additional_tags[card] = " ".join(tags)
+
+        print(f"Found {potential_trap_candidates} potential trap candidates")
+        print(f"Found {bad_card_candidates} bad card candidates")
+
+        # Check if the output file exists
+        if os.path.exists(output_file):
+            try:
+                # Read the existing file
+                with open(output_file, 'r', encoding='utf-8') as f:
+                    existing_lines = f.readlines()
+
+                # Process existing lines
+                updated_lines = []
+                cards_found = set()
+
+                for line in existing_lines:
+                    line = line.strip()
+                    if not line:
+                        updated_lines.append(line)
+                        continue
+
+                    # Extract card name from the format "1 Card Name #tag"
+                    try:
+                        parts = line.split()
+                        if not parts:
+                            updated_lines.append(line)
+                            continue
+
+                        # Expected format: "1 Card Name #tag"
+                        if parts[0].isdigit():
+                            # Find all tags (starting with #)
+                            tag_indices = [i for i, part in enumerate(parts) if part.startswith('#')]
+
+                            if tag_indices:
+                                # Card name is between the count and the first tag
+                                first_tag_index = tag_indices[0]
+                                card_name = ' '.join(parts[1:first_tag_index])
+                            else:
+                                # No tags yet, card name is everything after the count
+                                card_name = ' '.join(parts[1:])
+                        else:
+                            # Unexpected format (no count), try to extract card name
+                            tag_indices = [i for i, part in enumerate(parts) if part.startswith('#')]
+                            if tag_indices:
+                                first_tag_index = tag_indices[0]
+                                card_name = ' '.join(parts[:first_tag_index])
+                            else:
+                                card_name = ' '.join(parts)
+
+                        # Check if this card has a spice tag
+                        new_tags = []
+                        if card_name in spice_tags:
+                            new_tags.append(spice_tags[card_name])
+
+                        # Check if this card has additional tags
+                        if card_name in additional_tags:
+                            new_tags.append(additional_tags[card_name])
+
+                        if new_tags:
+                            # Append the tags to the existing line
+                            updated_line = f"{line} {' '.join(new_tags)}"
+                            updated_lines.append(updated_line)
+                            cards_found.add(card_name)
+                        else:
+                            # Keep the line as is
+                            updated_lines.append(line)
+                    except Exception as e:
+                        print(f"Error processing line '{line}': {e}")
+                        updated_lines.append(line)  # Keep the original line
+
+                # Add new cards with tags that weren't in the file
+                all_tagged_cards = {**spice_tags, **additional_tags}
+                for card in set(spice_tags.keys()) | set(additional_tags.keys()):
+                    if card not in cards_found:
+                        # Combine all tags for this card
+                        combined_tags = []
+                        if card in spice_tags:
+                            combined_tags.append(spice_tags[card])
+                        if card in additional_tags:
+                            combined_tags.append(additional_tags[card])
+
+                        # Add new cards with a default count of 1
+                        updated_lines.append(f"1 {card} {' '.join(combined_tags)}")
+
+                # Write back to the file
+                with open(output_file, 'w', encoding='utf-8') as f:
+                    for line in updated_lines:
+                        f.write(f"{line}\n")
+            except Exception as e:
+                print(f"Error updating existing file {output_file}: {e}")
+                # Fallback: Create a new file with just the tags
+                try:
+                    with open(output_file + '.new', 'w', encoding='utf-8') as f:
+                        for card in set(spice_tags.keys()) | set(additional_tags.keys()):
+                            combined_tags = []
+                            if card in spice_tags:
+                                combined_tags.append(spice_tags[card])
+                            if card in additional_tags:
+                                combined_tags.append(additional_tags[card])
+                            f.write(f"1 {card} {' '.join(combined_tags)}\n")
+                    print(f"Created fallback file {output_file}.new due to error")
+                except Exception as e2:
+                    print(f"Error creating fallback file: {e2}")
+        else:
+            # If file doesn't exist, create it with just the tagged cards
+            try:
+                with open(output_file, 'w', encoding='utf-8') as f:
+                    for card in set(spice_tags.keys()) | set(additional_tags.keys()):
+                        combined_tags = []
+                        if card in spice_tags:
+                            combined_tags.append(spice_tags[card])
+                        if card in additional_tags:
+                            combined_tags.append(additional_tags[card])
+                        # Add new cards with a default count of 1
+                        f.write(f"1 {card} {' '.join(combined_tags)}\n")
+            except Exception as e:
+                print(f"Error creating new file {output_file}: {e}")
+
+        # Print summary
+        print(f"\nSpice tag summary for top 20% cards ({len(top_cards)} cards):")
+        print(f"  #high_spice (< 3 appearances): {sum(top_cards['spice_tag'] == '#high_spice')}")
+        print(f"  #medium_spice (3-10 appearances): {sum(top_cards['spice_tag'] == '#medium_spice')}")
+        print(f"  #low_spice (> 10 appearances): {sum(top_cards['spice_tag'] == '#low_spice')}")
+
+        # Count potential traps and bad cards
+        potential_traps_count = sum(1 for tags in additional_tags.values() if "#potential_traps" in tags)
+        bad_cards_count = sum(1 for tags in additional_tags.values() if "#bad_cards" in tags)
+        print(f"  #potential_traps (negative score, >20% appearance): {potential_traps_count}")
+        print(f"  #bad_cards (bottom 20% of scores): {bad_cards_count}")
+
+        print(f"\nTags appended to {output_file}")
+
+        return top_cards
+    except Exception as e:
+        print(f"Error in create_spice_tags: {e}")
+        import traceback
+        print(traceback.format_exc())
+        return pd.DataFrame()  # Return empty DataFrame on error
 
 def main():
     # Load the CSV file
@@ -180,7 +361,7 @@ def main():
                     deck_col = col
                     break
 
-            url_col = 'weblink'
+            url_col = 'url'
 
         if not url_col or url_col not in df.columns:
             print(f"Error: Weblink column not found in CSV. Available columns: {df.columns.tolist()}")
@@ -194,6 +375,9 @@ def main():
             df['win_rate'] = (df[win_col] + 0.25 * df[draw_col]) / df['total_games']
         else:
             df['win_rate'] = df[win_col] / df['total_games']
+
+        # Handle division by zero
+        df['win_rate'] = df['win_rate'].fillna(0.25)  # Default to neutral win rate
 
         # Calculate power law weight with center at 0.25 instead of 0.5
         center = 0.25  # Win rate that produces a weight of 0
@@ -211,39 +395,45 @@ def main():
             df['DeckIndex'] = [f"Deck_{i}" for i in range(len(df))]
             deck_col = 'DeckIndex'
 
-        # Initialize card dictionary
-        card_dict = {}
+        # Initialize card dictionary using defaultdict for more robust handling
+        card_dict = defaultdict(lambda: {'appearance_count': 0, 'power_law_sum': 0})
 
         # Process each deck
+        processed_decks = 0
         for idx, row in df.iterrows():
-            deck_id = extract_deck_id(row[url_col])
-            if not deck_id:
-                print(f"Warning: Could not extract deck ID from Weblink: {row[url_col]}")
+            try:
+                deck_id = extract_deck_id(row[url_col])
+                if not deck_id:
+                    print(f"Warning: Could not extract deck ID from Weblink: {row[url_col]}")
+                    continue
+
+                deck_weight = row['power_weight']
+                deck_name = row[deck_col] if deck_col else f"Deck_{idx}"
+
+                # Find the decklist file
+                decklist_path = find_decklist_file(deck_id)
+                if not decklist_path:
+                    continue
+
+                print(f"Processing {deck_name} (ID: {deck_id}) with power weight: {deck_weight:.4f}")
+
+                # Read the decklist
+                cards = read_decklist(decklist_path)
+                if not cards:
+                    print(f"Warning: No cards found in decklist for {deck_name}")
+                    continue
+
+                # Update card dictionary
+                for card in cards:
+                    card_dict[card]['appearance_count'] += 1
+                    card_dict[card]['power_law_sum'] += deck_weight
+
+                processed_decks += 1
+            except Exception as e:
+                print(f"Error processing deck at index {idx}: {e}")
                 continue
 
-            deck_weight = row['power_weight']
-            deck_name = row[deck_col] if deck_col else f"Deck_{idx}"
-
-            # Find the decklist file
-            decklist_path = find_decklist_file(deck_id)
-            if not decklist_path:
-                continue
-
-            print(f"Processing {deck_name} (ID: {deck_id}) with power weight: {deck_weight:.4f}")
-
-            # Read the decklist
-            cards = read_decklist(decklist_path)
-
-            # Update card dictionary
-            for card in cards:
-                if card not in card_dict:
-                    card_dict[card] = {
-                        'appearance_count': 0,
-                        'power_law_sum': 0
-                    }
-
-                card_dict[card]['appearance_count'] += 1
-                card_dict[card]['power_law_sum'] += deck_weight
+        print(f"Successfully processed {processed_decks} decks")
 
         # Convert to DataFrame for easier analysis
         card_df = pd.DataFrame.from_dict(card_dict, orient='index')
@@ -255,6 +445,9 @@ def main():
 
         # Calculate average power per appearance
         card_df['average_power'] = card_df['power_law_sum'] / card_df['appearance_count']
+
+        # Handle potential NaN values
+        card_df = card_df.fillna(0)
 
         # Add card names as a column for easier reference
         card_df['card_name'] = card_df.index
@@ -282,28 +475,34 @@ def main():
         print(reliable_avg_df[['card_name', 'appearance_count', 'power_law_sum', 'average_power']].head(20))
 
         # Save results to CSV files
-        sum_df.to_csv('card_power_by_sum.csv')
-        avg_df.to_csv('card_power_by_average.csv')
-        reliable_avg_df.to_csv('card_power_by_reliable_average.csv')
-        print(f"Analysis saved to CSV files")
+        try:
+            sum_df.to_csv('card_power_by_sum.csv')
+            avg_df.to_csv('card_power_by_average.csv')
+            reliable_avg_df.to_csv('card_power_by_reliable_average.csv')
+            print(f"Analysis saved to CSV files")
+        except Exception as e:
+            print(f"Error saving CSV files: {e}")
 
         # Create spice tags for top 20% cards using average power
         create_spice_tags(card_df)
 
         # Visualize the power law function with center at 0.25
-        win_rates = np.linspace(0, 1, 100)
-        weights = [power_law_weight(wr, power=power, center=center) for wr in win_rates]
+        try:
+            win_rates = np.linspace(0, 1, 100)
+            weights = [power_law_weight(wr, power=power, center=center) for wr in win_rates]
 
-        plt.figure(figsize=(10, 6))
-        plt.plot(win_rates, weights)
-        plt.axhline(y=0, color='gray', linestyle='--')
-        plt.axvline(x=center, color='gray', linestyle='--')
-        plt.xlabel('Win Rate')
-        plt.ylabel('Weight')
-        plt.title(f'Power Law Weighting (Power={power}, Center={center})')
-        plt.grid(True)
-        plt.savefig('power_law_weight_function.png')
-        print("Visualization saved to power_law_weight_function.png")
+            plt.figure(figsize=(10, 6))
+            plt.plot(win_rates, weights)
+            plt.axhline(y=0, color='gray', linestyle='--')
+            plt.axvline(x=center, color='gray', linestyle='--')
+            plt.xlabel('Win Rate')
+            plt.ylabel('Weight')
+            plt.title(f'Power Law Weighting (Power={power}, Center={center})')
+            plt.grid(True)
+            plt.savefig('power_law_weight_function.png')
+            print("Visualization saved to power_law_weight_function.png")
+        except Exception as e:
+            print(f"Error creating visualization: {e}")
 
     except Exception as e:
         import traceback

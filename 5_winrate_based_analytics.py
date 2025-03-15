@@ -70,8 +70,8 @@ def create_spice_tags(card_df, output_file="tagged_cards.txt"):
     Ignores cards with numbers appended at the end.
     Append these tags to the existing tagged_cards.txt file.
     If a card already exists in the file, append the spice tag to that entry.
-    Also adds #potential_traps tag for cards with negative average score appearing in >20% of decks.
-    Adds #bad_cards tag for cards in the bottom 20% of average scores.
+    Also adds #7_potential_traps tag for bottom 20 cards that appear in >20% of decks.
+    Adds #8_bad_cards tag for cards in the bottom 20% or bottom 30 cards, whichever is smaller.
 
     Args:
         card_df: DataFrame containing card data with average_power and appearance_count
@@ -121,31 +121,37 @@ def create_spice_tags(card_df, output_file="tagged_cards.txt"):
         top_20_percent_cutoff = max(1, int(len(sorted_df) * 0.2))  # Ensure at least 1 card
         top_cards = sorted_df.iloc[:top_20_percent_cutoff].copy()
 
-        # Calculate the cutoff for bottom 20%
+        # Calculate the cutoff for bottom 20% or 30 cards, whichever is smaller
         bottom_20_percent_cutoff = max(1, int(len(sorted_df) * 0.2))  # Ensure at least 1 card
-        bottom_cards = sorted_df.iloc[-bottom_20_percent_cutoff:].copy()
+        bottom_30_cards_cutoff = min(30, len(sorted_df))
+        bottom_cutoff = min(bottom_20_percent_cutoff, bottom_30_cards_cutoff)
+
+        # Get the bottom cards
+        bottom_cards = sorted_df.iloc[-bottom_cutoff:].copy()
         bottom_threshold = bottom_cards['average_power'].max()
 
-        # Calculate the total number of decks
-        # This should be the total number of unique decks, not the sum of appearance counts
-        total_decks = len(pd.unique(filtered_df['appearance_count']))
-        deck_threshold = 0.2 * total_decks  # 20% of total decks
+        print(f"Selected bottom {bottom_cutoff} cards as bad cards (min of 20% and 30 cards)")
+
+        # Calculate the total number of decks for percentage calculation
+        total_decks = filtered_df['appearance_count'].sum() / len(filtered_df)  # Average appearances per card
+        deck_threshold_percentage = 0.2  # 20% of decks
+        deck_threshold = deck_threshold_percentage * total_decks
 
         # Debug information
-        print(f"Total unique decks: {total_decks}")
-        print(f"Deck threshold (20%): {deck_threshold}")
+        print(f"Average decks per card: {total_decks:.2f}")
+        print(f"Deck threshold (20%): {deck_threshold:.2f}")
         print(f"Bottom score threshold: {bottom_threshold}")
 
         # Apply tags based on appearance counts
         def assign_spice_tag(appearances):
             if pd.isna(appearances):
-                return "#medium_spice"  # Default tag for missing data
+                return "#5_medium_spice"  # Default tag for missing data
             if appearances < 3:
-                return "#high_spice"
+                return "#4_high_spice"
             elif appearances <= 10:
-                return "#medium_spice"
+                return "#5_medium_spice"
             else:
-                return "#low_spice"
+                return "#6_low_spice"
 
         # Ensure appearance_count column exists
         if 'appearance_count' not in top_cards.columns:
@@ -160,34 +166,33 @@ def create_spice_tags(card_df, output_file="tagged_cards.txt"):
         # Add potential_traps and bad_cards tags
         additional_tags = {}
 
-        # Debug counters
-        potential_trap_candidates = 0
-        bad_card_candidates = 0
+        # Find cards that appear in >20% of decks
+        high_appearance_cards = filtered_df[filtered_df['appearance_count'] > deck_threshold].copy()
+        print(f"Found {len(high_appearance_cards)} cards appearing in >20% of decks")
 
-        for card, row in filtered_df.iterrows():
-            tags = []
+        # Sort these by average_power (ascending) to get the worst performers
+        high_appearance_cards = high_appearance_cards.sort_values('average_power', ascending=True)
 
-            # Debug output for some cards
-            if card in top_cards.index[:5] or card in bottom_cards.index[:5]:
-                print(f"Card: {card}, Appearances: {row['appearance_count']}, Avg Power: {row['average_power']}")
+        # Take the bottom 20 cards (or all if fewer than 20)
+        potential_trap_count = min(20, len(high_appearance_cards))
+        potential_traps = high_appearance_cards.iloc[:potential_trap_count]
 
-            # Tag cards with high appearance rate but negative average score
-            # Use absolute count comparison instead of percentage
-            if row['appearance_count'] > deck_threshold and row['average_power'] < 0:
-                tags.append("#potential_traps")
-                potential_trap_candidates += 1
-                print(f"Potential trap: {card} - Appearances: {row['appearance_count']}, Avg Power: {row['average_power']}")
+        print(f"Selected {potential_trap_count} cards as potential traps")
 
-            # Tag cards in the bottom 20% of average scores
-            if row['average_power'] <= bottom_threshold:
-                tags.append("#bad_cards")
-                bad_card_candidates += 1
+        # Debug: Print the potential traps
+        print("\nPotential trap cards:")
+        for card, row in potential_traps.iterrows():
+            print(f"  {card}: appearances={row['appearance_count']}, avg_power={row['average_power']:.4f}")
+            additional_tags[card] = "#7_potential_traps"
 
-            if tags:
-                additional_tags[card] = " ".join(tags)
-
-        print(f"Found {potential_trap_candidates} potential trap candidates")
-        print(f"Found {bad_card_candidates} bad card candidates")
+        # Tag cards in the bottom cards as bad cards
+        print("\nBad cards:")
+        for card, row in bottom_cards.iterrows():
+            # Skip cards already tagged as potential traps
+            if card in additional_tags:
+                continue
+            print(f"  {card}: appearances={row['appearance_count']}, avg_power={row['average_power']:.4f}")
+            additional_tags[card] = "#8_bad_cards"
 
         # Check if the output file exists
         if os.path.exists(output_file):
@@ -305,15 +310,15 @@ def create_spice_tags(card_df, output_file="tagged_cards.txt"):
 
         # Print summary
         print(f"\nSpice tag summary for top 20% cards ({len(top_cards)} cards):")
-        print(f"  #high_spice (< 3 appearances): {sum(top_cards['spice_tag'] == '#high_spice')}")
-        print(f"  #medium_spice (3-10 appearances): {sum(top_cards['spice_tag'] == '#medium_spice')}")
-        print(f"  #low_spice (> 10 appearances): {sum(top_cards['spice_tag'] == '#low_spice')}")
+        print(f"  #4_high_spice (< 3 appearances): {sum(top_cards['spice_tag'] == '#4_high_spice')}")
+        print(f"  #5_medium_spice (3-10 appearances): {sum(top_cards['spice_tag'] == '#5_medium_spice')}")
+        print(f"  #6_low_spice (> 10 appearances): {sum(top_cards['spice_tag'] == '#6_low_spice')}")
 
         # Count potential traps and bad cards
-        potential_traps_count = sum(1 for tags in additional_tags.values() if "#potential_traps" in tags)
-        bad_cards_count = sum(1 for tags in additional_tags.values() if "#bad_cards" in tags)
-        print(f"  #potential_traps (negative score, >20% appearance): {potential_traps_count}")
-        print(f"  #bad_cards (bottom 20% of scores): {bad_cards_count}")
+        potential_traps_count = sum(1 for tags in additional_tags.values() if "#7_potential_traps" in tags)
+        bad_cards_count = sum(1 for tags in additional_tags.values() if "#8_bad_cards" in tags)
+        print(f"  #7_potential_traps (bottom 20 cards with >20% appearance): {potential_traps_count}")
+        print(f"  #8_bad_cards (bottom {bottom_cutoff} cards): {bad_cards_count}")
 
         print(f"\nTags appended to {output_file}")
 

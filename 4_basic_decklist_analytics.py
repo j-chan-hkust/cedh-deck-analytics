@@ -4,15 +4,13 @@ import glob
 import re
 from collections import Counter
 
-#todo: maybe core should be 99% usage rate, not 100%
-
 def analyze_card_usage(input_dir="processed_decklists", output_file="tagged_cards.txt"):
     """
     Analyze the usage rate of cards across deck lists and output a single file
     with cards tagged based on their usage percentage:
-    - 100% usage: #core
-    - 95% usage: #essential
-    - 90% usage: #common
+    - 100% usage: #1_core
+    - 95% usage: #2_essential
+    - 90% usage: #3_common
 
     For cards with numbered suffixes (e.g., mountain1, mountain2), combine them
     and show the total count in the output.
@@ -93,12 +91,12 @@ def analyze_card_usage(input_dir="processed_decklists", output_file="tagged_card
         usage_percent = (count / total_decks) * 100
         quantity = card_quantities.get(card, 1)
 
-        if usage_percent >= 100:
-            tagged_cards.append((card, quantity, usage_percent, "#core"))
+        if usage_percent >= 99:
+            tagged_cards.append((card, quantity, usage_percent, "#1_core"))
         elif usage_percent >= 95:
-            tagged_cards.append((card, quantity, usage_percent, "#essential"))
+            tagged_cards.append((card, quantity, usage_percent, "#2_essential"))
         elif usage_percent >= 90:
-            tagged_cards.append((card, quantity, usage_percent, "#common"))
+            tagged_cards.append((card, quantity, usage_percent, "#3_common"))
 
     # Sort cards by usage percentage (highest first)
     tagged_cards.sort(key=lambda x: x[2], reverse=True)
@@ -110,9 +108,9 @@ def analyze_card_usage(input_dir="processed_decklists", output_file="tagged_card
 
     # Print summary
     print(f"\nTagged cards summary:")
-    print(f"  #core cards (100% usage): {sum(1 for _, _, _, tag in tagged_cards if tag == '#core')}")
-    print(f"  #essential cards (95-99% usage): {sum(1 for _, _, _, tag in tagged_cards if tag == '#essential')}")
-    print(f"  #common cards (90-94% usage): {sum(1 for _, _, _, tag in tagged_cards if tag == '#common')}")
+    print(f"  #1_core cards (100% usage): {sum(1 for _, _, _, tag in tagged_cards if tag == '#1_core')}")
+    print(f"  #2_essential cards (95-99% usage): {sum(1 for _, _, _, tag in tagged_cards if tag == '#2_essential')}")
+    print(f"  #3_common cards (90-94% usage): {sum(1 for _, _, _, tag in tagged_cards if tag == '#3_common')}")
     print(f"\nResults saved to {output_file}")
 
 if __name__ == "__main__":

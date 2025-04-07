@@ -175,17 +175,17 @@ def scrape_deck_pages(csv_file_path="edh16_scrape.csv", output_dir="deck_lists")
                 try:
                     # Check for error page elements
                     error_element = driver.find_element(By.XPATH,
-                                                        "//*[contains(text(), 'Page Not Found') or contains(text(), 'does not exist on Moxfield')]")
-                    print(f"Skipping deleted deck: {url}")
+                                                        "//*[contains(text(), 'Page Not Found') or contains(text(), 'does not exist on Moxfield') or contains(text(), 'This page is lost, but seeking.')]")
+                    print(f"Skipping invalid deck url: {url}")
                     with open(summary_file, 'a', encoding='utf-8') as f:
                         f.write(
                             f'"{title}",{placement},{players},{wins},{losses},{draws},"{url}","{deck_id}","Skipped - Page Not Found"\n')
-                    continue
+                    break
                 except:
                     pass  # Proceed if no error elements found
                 try:
-                    # Wait up to 45 seconds for the deck name to appear
-                    WebDriverWait(driver, 45).until(
+                    # Wait up to 10 seconds for the deck name to appear
+                    WebDriverWait(driver, 10).until(
                         EC.presence_of_element_located((By.CLASS_NAME, "deckheader-name"))
                     )
                     print("Content loaded successfully!")

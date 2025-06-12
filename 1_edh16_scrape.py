@@ -190,7 +190,7 @@ def scrape_edhtop16(url):
 
 def main():
     # Use the URL directly
-    url = "https://edhtop16.com/commander/Winota%2C%20Joiner%20of%20Forces?timePeriod=POST_BAN"
+    url = "https://edhtop16.com/commander/Sisay%2C%20Weatherlight%20Captain?timePeriod=THREE_MONTHS"
 
     # Scrape the data
     data = scrape_edhtop16(url)

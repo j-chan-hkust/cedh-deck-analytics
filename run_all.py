@@ -1,6 +1,7 @@
 import subprocess
 
 #todo automatically run all
+#todo auto setup requirements
 
 scripts = [
     "1_edh16_scrape.py",

@@ -4,6 +4,7 @@ import os
 import re
 import matplotlib.pyplot as plt
 from collections import defaultdict
+from dir_utils import get_latest_output_dir
 
 def power_law_weight(win_rate, power=2, center=0.25):
     """
@@ -30,10 +31,24 @@ def extract_deck_id(url):
         print(f"Error extracting deck ID: {e}")
         return None
 
-def find_decklist_file(deck_id):
-    """Find the decklist file that contains the deck ID in its name"""
+def find_decklist_file(deck_id, processed_decklists_dir=None):
+    """
+    Find the decklist file that contains the deck ID in its name.
+    
+    Args:
+        deck_id: The deck ID to search for
+        processed_decklists_dir: Optional path to the processed_decklists directory.
+                               If None, will use the latest timestamped directory.
+    """
     try:
-        processed_decklists_dir = "processed_decklists"
+        # If no directory specified, find the latest timestamped directory
+        if processed_decklists_dir is None:
+            base_dir = get_latest_output_dir()
+            if base_dir is None:
+                print("Error: No timestamped directory found. Please run previous scripts first.")
+                return None
+            processed_decklists_dir = os.path.join(base_dir, "processed_decklists")
+            print(f"Using processed decklists from: {processed_decklists_dir}")
 
         # Check if directory exists
         if not os.path.isdir(processed_decklists_dir):
@@ -63,7 +78,7 @@ def read_decklist(filepath):
         print(f"Error reading file {filepath}: {e}")
         return []
 
-def create_spice_tags(card_df, output_file="tagged_cards.txt"):
+def create_spice_tags(card_df, output_file=None):
     """
     Create spice tags for cards in the top 20% of the list based on appearance counts.
     Uses average power instead of power_sum for ranking.
@@ -75,8 +90,15 @@ def create_spice_tags(card_df, output_file="tagged_cards.txt"):
 
     Args:
         card_df: DataFrame containing card data with average_power and appearance_count
-        output_file: File where tagged cards will be appended
+        output_file: File where tagged cards will be appended. If None, will use the latest timestamped directory.
     """
+    # Set default output file if not provided
+    if output_file is None:
+        base_dir = get_latest_output_dir()
+        if base_dir is None:
+            print("Error: No timestamped directory found. Please run 1_edh16_scrape.py first.")
+            return pd.DataFrame()
+        output_file = os.path.join(base_dir, "spice_tags.txt")
     try:
         # Handle empty dataframe
         if card_df.empty:
@@ -329,11 +351,31 @@ def create_spice_tags(card_df, output_file="tagged_cards.txt"):
         print(traceback.format_exc())
         return pd.DataFrame()  # Return empty DataFrame on error
 
-def main():
-    # Load the CSV file
+def analyze_deck_win_rates(csv_file=None, output_file=None):
+    """
+    Analyze win rates for cards across all decks.
+    
+    Args:
+        csv_file: Path to the CSV file with tournament results. If None, will look in the latest timestamped directory.
+        output_file: Path to save the analysis results. If None, will save to winrate_analysis.txt in the timestamped directory.
+    """
+    # Find the latest output directory if not specified
+    if csv_file is None or output_file is None:
+        base_dir = get_latest_output_dir()
+        if base_dir is None:
+            print("Error: No timestamped directory found. Please run 1_edh16_scrape.py first.")
+            return pd.DataFrame()
+        
+        if csv_file is None:
+            csv_file = os.path.join(base_dir, "edh16_scrape.csv")
+        
+        if output_file is None:
+            output_file = os.path.join(base_dir, "winrate_analysis.txt")
+    
     try:
-        df = pd.read_csv('edh16_scrape.csv')
-        print(f"Successfully loaded data with {len(df)} records")
+        # Load the CSV file
+        df = pd.read_csv(csv_file)
+        print(f"Successfully loaded data with {len(df)} records from {csv_file}")
 
         # Print column names to debug
         print("Available columns:", df.columns.tolist())
@@ -343,34 +385,22 @@ def main():
             win_col = 'Wins'
             loss_col = 'Losses'
             draw_col = 'Draws' if 'Draws' in df.columns else None
-
+            url_col = 'Weblink'
             # Try to find a deck name column - check multiple possible names
             possible_deck_cols = ['Deck', 'Commander', 'Name', 'Title', 'DeckName']
-            deck_col = None
-            for col in possible_deck_cols:
-                if col in df.columns:
-                    deck_col = col
-                    break
-
-            url_col = 'Weblink'
+            deck_col = next((col for col in possible_deck_cols if col in df.columns), None)
         else:
             win_col = 'wins'
             loss_col = 'losses'
             draw_col = 'draws' if 'draws' in df.columns else None
-
+            url_col = 'url'
             # Try to find a deck name column - check multiple possible names
             possible_deck_cols = ['deck_name', 'commander', 'name', 'title', 'deckname']
-            deck_col = None
-            for col in possible_deck_cols:
-                if col in df.columns:
-                    deck_col = col
-                    break
-
-            url_col = 'url'
+            deck_col = next((col for col in possible_deck_cols if col in df.columns), None)
 
         if not url_col or url_col not in df.columns:
             print(f"Error: Weblink column not found in CSV. Available columns: {df.columns.tolist()}")
-            return
+            return pd.DataFrame()
 
         # Calculate adjusted win rate with draws worth 0.25 of a win
         df['total_games'] = df[win_col] + df[loss_col]
@@ -384,13 +414,12 @@ def main():
         # Handle division by zero
         df['win_rate'] = df['win_rate'].fillna(0.25)  # Default to neutral win rate
 
-        # Calculate power law weight with center at 0.25 instead of 0.5
+        # Calculate power law weight with center at 0.25
         center = 0.25  # Win rate that produces a weight of 0
         power = 2      # Power parameter for non-linearity
-
         df['power_weight'] = df['win_rate'].apply(lambda x: power_law_weight(x, power=power, center=center))
 
-        # Display the win rates and weights for verification - handle case where deck_col is None
+        # Display the win rates and weights for verification
         print("\nSample of win rates and power weights (centered at 0.25):")
         if deck_col:
             print(df[[deck_col, 'win_rate', 'power_weight']].head(10))
@@ -446,7 +475,7 @@ def main():
         # Handle empty dataframe case
         if card_df.empty:
             print("No cards were processed. Check file paths and deck IDs.")
-            return
+            return pd.DataFrame()
 
         # Calculate average power per appearance
         card_df['average_power'] = card_df['power_law_sum'] / card_df['appearance_count']
@@ -463,39 +492,25 @@ def main():
         # Sort by average power (descending)
         avg_df = card_df.sort_values('average_power', ascending=False)
 
+
         # Filter to cards that appear in at least 3 decks for more reliable average power
         min_appearances = 3
         reliable_avg_df = card_df[card_df['appearance_count'] >= min_appearances].sort_values('average_power', ascending=False)
 
-        # Display top cards by power law sum
-        print("\nTop 20 Cards by Power Law Sum:")
-        print(sum_df[['card_name', 'appearance_count', 'power_law_sum', 'average_power']].head(20))
-
-        # Display top cards by average power
-        print(f"\nTop 20 Cards by Average Power (all cards):")
-        print(avg_df[['card_name', 'appearance_count', 'power_law_sum', 'average_power']].head(20))
-
-        # Display top cards by average power with minimum appearances
-        print(f"\nTop 20 Cards by Average Power (minimum {min_appearances} appearances):")
-        print(reliable_avg_df[['card_name', 'appearance_count', 'power_law_sum', 'average_power']].head(20))
-
-        # Save results to CSV files
+        # Save results to files in the timestamped directory
         try:
-            sum_df.to_csv('card_power_by_sum.csv')
-            avg_df.to_csv('card_power_by_average.csv')
-            reliable_avg_df.to_csv('card_power_by_reliable_average.csv')
-            print(f"Analysis saved to CSV files")
+            sum_df.to_csv(os.path.join(os.path.dirname(output_file), 'card_power_by_sum.csv'))
+            avg_df.to_csv(os.path.join(os.path.dirname(output_file), 'card_power_by_average.csv'))
+            reliable_avg_df.to_csv(os.path.join(os.path.dirname(output_file), 'card_power_by_reliable_average.csv'))
+            print(f"Analysis saved to {os.path.dirname(output_file)}/")
         except Exception as e:
             print(f"Error saving CSV files: {e}")
-
-        # Create spice tags for top 20% cards using average power
-        create_spice_tags(card_df)
 
         # Visualize the power law function with center at 0.25
         try:
             win_rates = np.linspace(0, 1, 100)
             weights = [power_law_weight(wr, power=power, center=center) for wr in win_rates]
-
+            
             plt.figure(figsize=(10, 6))
             plt.plot(win_rates, weights)
             plt.axhline(y=0, color='gray', linestyle='--')
@@ -504,15 +519,51 @@ def main():
             plt.ylabel('Weight')
             plt.title(f'Power Law Weighting (Power={power}, Center={center})')
             plt.grid(True)
-            plt.savefig('power_law_weight_function.png')
-            print("Visualization saved to power_law_weight_function.png")
+            
+            # Save the visualization in the timestamped directory
+            viz_path = os.path.join(os.path.dirname(output_file), 'power_law_weight_function.png')
+            plt.savefig(viz_path)
+            print(f"Visualization saved to {viz_path}")
+            plt.close()
         except Exception as e:
             print(f"Error creating visualization: {e}")
+
+        return card_df
 
     except Exception as e:
         import traceback
         print(f"Error processing data: {e}")
         print(traceback.format_exc())
+        return pd.DataFrame()
+
+def main():
+    # Find the latest output directory
+    base_dir = get_latest_output_dir()
+    if base_dir is None:
+        print("Error: No timestamped directory found. Please run 1_edh16_scrape.py first.")
+        return
+    
+    # Set up file paths
+    csv_file = os.path.join(base_dir, "edh16_scrape.csv")
+    winrate_output = os.path.join(base_dir, "winrate_analysis.txt")
+    tagged_cards_file = os.path.join(base_dir, "tagged_cards.txt")
+    
+    # Run the analysis
+    card_df = analyze_deck_win_rates(csv_file, winrate_output)
+    
+    # Create spice tags if we have card data
+    if not card_df.empty:
+        # Check if tagged_cards.txt exists, if not, create it
+        if not os.path.exists(tagged_cards_file):
+            print(f"Creating new {tagged_cards_file} file")
+            with open(tagged_cards_file, 'w', encoding='utf-8') as f:
+                f.write("# This file contains card tags. Format: <count> <card name> #tag1 #tag2\n")
+        
+        # Append spice tags to the existing tagged_cards.txt
+        print(f"\nAppending spice tags to {tagged_cards_file}")
+        create_spice_tags(card_df, tagged_cards_file)
+    else:
+        print("No card data available to create spice tags")
 
 if __name__ == "__main__":
     main()

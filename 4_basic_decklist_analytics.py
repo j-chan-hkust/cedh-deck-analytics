@@ -3,8 +3,9 @@ import sys
 import glob
 import re
 from collections import Counter
+from dir_utils import get_latest_output_dir
 
-def analyze_card_usage(input_dir="processed_decklists", output_file="tagged_cards.txt"):
+def analyze_card_usage(input_dir=None, output_file=None):
     """
     Analyze the usage rate of cards across deck lists and output a single file
     with cards tagged based on their usage percentage:
@@ -14,15 +15,32 @@ def analyze_card_usage(input_dir="processed_decklists", output_file="tagged_card
 
     For cards with numbered suffixes (e.g., mountain1, mountain2), combine them
     and show the total count in the output.
+    
+    If no directories are specified, uses the most recent timestamped directory.
 
     Args:
         input_dir: Directory containing the processed deck list files
         output_file: File where tagged cards will be saved
     """
+    # Find the latest output directory if not specified
+    if input_dir is None:
+        base_dir = get_latest_output_dir()
+        if base_dir is None:
+            print("Error: No timestamped directory found. Please run previous scripts first.")
+            return
+        input_dir = os.path.join(base_dir, "processed_decklists")
+    
+    if output_file is None:
+        base_dir = base_dir if 'base_dir' in locals() else os.path.dirname(os.path.dirname(os.path.abspath(input_dir)))
+        output_file = os.path.join(base_dir, "tagged_cards.txt")
+    
     # Check if input directory exists
     if not os.path.exists(input_dir):
         print(f"Error: Input directory '{input_dir}' does not exist")
         return
+        
+    print(f"Analyzing files from: {input_dir}")
+    print(f"Saving results to: {output_file}")
 
     # Get all text files in the input directory
     deck_files = glob.glob(os.path.join(input_dir, "*.txt"))

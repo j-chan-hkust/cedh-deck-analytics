@@ -9,6 +9,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
+from dir_utils import create_timestamped_dir
 
 #todo improve the user input experience - automatically prompt the user for the weblink, or read the weblink from a config file
 #todo update the code to upload all files into their own new directory - no need to faff around rearranging stuff
@@ -190,7 +191,7 @@ def scrape_edhtop16(url):
 
 def main():
     # Use the URL directly
-    url = "https://edhtop16.com/commander/Magda%2C%20Brazen%20Outlaw?timePeriod=THREE_MONTHS"
+    url = "https://edhtop16.com/commander/Hashaton%2C%20Scarab's%20Fist?timePeriod=THREE_MONTHS&minEventSize=32"
 
     # Scrape the data
     data = scrape_edhtop16(url)
@@ -201,9 +202,9 @@ def main():
         'date', 'placement', 'total_players', 'wins', 'losses', 'draws'
     ]
 
-    # Save the data to a CSV file - completely overwrite the file
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    output_file = os.path.join(script_dir, "edh16_scrape.csv")
+    # Create timestamped output directory and save CSV
+    output_dir = create_timestamped_dir(url)
+    output_file = os.path.join(output_dir, "edh16_scrape.csv")
 
     # Always write a new file (overwrite mode)
     with open(output_file, 'w', newline='', encoding='utf-8') as f:

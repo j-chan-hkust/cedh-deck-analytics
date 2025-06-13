@@ -13,14 +13,32 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import WebDriverException, SessionNotCreatedException, InvalidSessionIdException
 from selenium_stealth import stealth
+from dir_utils import get_latest_output_dir
 
 #todo: more elegantly handle invalid links - you should know when to give up if the content is Page Not Found
 
-def scrape_deck_pages(csv_file_path="edh16_scrape.csv", output_dir="deck_lists"):
-    # Create output directory if it doesn't exist
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-        print(f"Created output directory: {output_dir}")
+def scrape_deck_pages(csv_file_path=None, output_dir=None):
+    # Find the latest output directory if not specified
+    if output_dir is None:
+        output_dir = get_latest_output_dir()
+        if output_dir is None:
+            print("Error: No timestamped directory found. Please run 1_edh16_scrape.py first.")
+            return
+        output_dir = os.path.join(output_dir, "deck_lists")
+    
+    # Create the deck_lists subdirectory
+    os.makedirs(output_dir, exist_ok=True)
+    print(f"Using output directory: {output_dir}")
+    
+    # If no CSV file is specified, look for the most recent one in the parent directory
+    if csv_file_path is None:
+        parent_dir = os.path.dirname(os.path.abspath(output_dir))
+        csv_files = [f for f in os.listdir(parent_dir) if f.endswith('.csv')]
+        if not csv_files:
+            print("Error: No CSV file found in the parent directory.")
+            return
+        csv_file_path = os.path.join(parent_dir, csv_files[0])
+        print(f"Using CSV file: {csv_file_path}")
 
     # Load the CSV file into a pandas DataFrame
     try:

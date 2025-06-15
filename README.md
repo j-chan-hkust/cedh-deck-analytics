@@ -1,4 +1,4 @@
-# cEDH Magda Analysis Tool
+# cEDH decklist Analysis Tool
 
 This tool helps analyze competitive EDH (cEDH) decklists. It scrapes tournament data from EDHTop16, fetches detailed decklists from Moxfield, and performs various analytics to help you understand card choices and deck construction trends.
 

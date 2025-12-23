@@ -9,7 +9,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
-from dir_utils import create_timestamped_dir
+from utils import create_timestamped_dir, extract_deck_id
 
 #todo improve the user input experience - automatically prompt the user for the weblink, or read the weblink from a config file
 #todo update the code to upload all files into their own new directory - no need to faff around rearranging stuff
@@ -89,7 +89,7 @@ def scrape_edhtop16(url):
         commander_name = title_text.split('|')[0].strip()
 
         # Find all deck entries using the correct class structure
-        deck_entries = soup.find_all('div', class_='group relative overflow-hidden rounded-lg bg-white shadow transition-shadow cursor-pointer hover:shadow-lg')
+        deck_entries = soup.find_all('div', class_='group relative overflow-hidden rounded-lg bg-white shadow-sm transition-shadow cursor-pointer hover:shadow-lg')
         print(f"Found {len(deck_entries)} deck entries")
 
         decks = []
@@ -101,23 +101,18 @@ def scrape_edhtop16(url):
 
             url = deck_link['href'].strip() #you have to do this because they sometimes make a small typo and add a space!!
 
-            # Skip if not a Moxfield URL
-            if "moxfield.com" not in url:
-                continue
+            deck_id = extract_deck_id(url)
 
-            # Extract the deck ID from the URL
-            deck_id_match = re.search(r'moxfield\.com/decks/([^/]+)', url)
-            if not deck_id_match:
+            # Skip if not a valid Moxfield URL
+            if "moxfield.com" in url and not deck_id:
                 continue
-
-            deck_id = deck_id_match.group(1)
 
             # Create deck info dictionary with the required fields
             deck_info = {
                 'commander': commander_name,
                 'deck_id': deck_id,
                 'url': url,
-                'name': deck_link.text.strip()
+                'name': ''.join(filter(str.isalnum, deck_link.text.strip())) #leave only alphanumerics to filter out emojis and other nonsense
             }
 
             # Extract tournament name (from the second <a> tag)
@@ -189,9 +184,7 @@ def scrape_edhtop16(url):
         # Always close the driver
         driver.quit()
 
-def main():
-    # Use the URL directly
-    url = "https://edhtop16.com/commander/Hashaton%2C%20Scarab's%20Fist?timePeriod=THREE_MONTHS&minEventSize=32"
+def main(url):
 
     # Scrape the data
     data = scrape_edhtop16(url)
@@ -230,6 +223,3 @@ def main():
 
     print(f"Scraped {len(data['decks'])} decks for {data['commander']}")
     print(f"Data saved to {output_file}")
-
-if __name__ == "__main__":
-    main()

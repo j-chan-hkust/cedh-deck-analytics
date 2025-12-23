@@ -3,7 +3,7 @@ import sys
 import glob
 import re
 from collections import Counter
-from dir_utils import get_latest_output_dir
+from utils import get_latest_output_dir
 
 def analyze_card_usage(input_dir=None, output_file=None):
     """
@@ -15,7 +15,7 @@ def analyze_card_usage(input_dir=None, output_file=None):
 
     For cards with numbered suffixes (e.g., mountain1, mountain2), combine them
     and show the total count in the output.
-    
+
     If no directories are specified, uses the most recent timestamped directory.
 
     Args:
@@ -29,16 +29,16 @@ def analyze_card_usage(input_dir=None, output_file=None):
             print("Error: No timestamped directory found. Please run previous scripts first.")
             return
         input_dir = os.path.join(base_dir, "processed_decklists")
-    
+
     if output_file is None:
         base_dir = base_dir if 'base_dir' in locals() else os.path.dirname(os.path.dirname(os.path.abspath(input_dir)))
         output_file = os.path.join(base_dir, "tagged_cards.txt")
-    
+
     # Check if input directory exists
     if not os.path.exists(input_dir):
         print(f"Error: Input directory '{input_dir}' does not exist")
         return
-        
+
     print(f"Analyzing files from: {input_dir}")
     print(f"Saving results to: {output_file}")
 

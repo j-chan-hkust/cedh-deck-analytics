@@ -2,14 +2,14 @@ import os
 import re
 import sys
 import glob
-from dir_utils import get_latest_output_dir
+from utils import get_latest_output_dir
 
 def preprocess_decklists(input_dir=None, output_dir=None):
     """
     Preprocess deck list text files to extract just the card names.
     For cards with multiple copies, create entries like card_name1, card_name2, etc.
     Stop processing when reaching the sideboard or stickers section.
-    
+
     If no directories are specified, uses the most recent timestamped directory.
 
     Args:
@@ -23,11 +23,11 @@ def preprocess_decklists(input_dir=None, output_dir=None):
             print("Error: No timestamped directory found. Please run 1_edh16_scrape.py first.")
             return
         input_dir = os.path.join(base_dir, "deck_lists")
-    
+
     if output_dir is None:
         base_dir = base_dir if 'base_dir' in locals() else os.path.dirname(os.path.dirname(os.path.abspath(input_dir)))
         output_dir = os.path.join(base_dir, "processed_decklists")
-    
+
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
     print(f"Processing files from: {input_dir}")

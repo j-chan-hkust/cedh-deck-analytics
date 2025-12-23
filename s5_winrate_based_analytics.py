@@ -4,7 +4,7 @@ import os
 import re
 import matplotlib.pyplot as plt
 from collections import defaultdict
-from dir_utils import get_latest_output_dir
+from utils import get_latest_output_dir, extract_deck_id
 
 def power_law_weight(win_rate, power=2, center=0.25):
     """
@@ -19,22 +19,10 @@ def power_law_weight(win_rate, power=2, center=0.25):
         print(f"Error calculating power law weight: {e}")
         return 0  # Return a neutral weight on error
 
-def extract_deck_id(url):
-    """Extract the deck ID from the Moxfield URL"""
-    try:
-        # Extract the part after the last slash
-        match = re.search(r'/([^/]+)$', url)
-        if match:
-            return match.group(1)
-        return None
-    except Exception as e:
-        print(f"Error extracting deck ID: {e}")
-        return None
-
 def find_decklist_file(deck_id, processed_decklists_dir=None):
     """
     Find the decklist file that contains the deck ID in its name.
-    
+
     Args:
         deck_id: The deck ID to search for
         processed_decklists_dir: Optional path to the processed_decklists directory.
@@ -354,7 +342,7 @@ def create_spice_tags(card_df, output_file=None):
 def analyze_deck_win_rates(csv_file=None, output_file=None):
     """
     Analyze win rates for cards across all decks.
-    
+
     Args:
         csv_file: Path to the CSV file with tournament results. If None, will look in the latest timestamped directory.
         output_file: Path to save the analysis results. If None, will save to winrate_analysis.txt in the timestamped directory.
@@ -365,13 +353,13 @@ def analyze_deck_win_rates(csv_file=None, output_file=None):
         if base_dir is None:
             print("Error: No timestamped directory found. Please run 1_edh16_scrape.py first.")
             return pd.DataFrame()
-        
+
         if csv_file is None:
             csv_file = os.path.join(base_dir, "edh16_scrape.csv")
-        
+
         if output_file is None:
             output_file = os.path.join(base_dir, "winrate_analysis.txt")
-    
+
     try:
         # Load the CSV file
         df = pd.read_csv(csv_file)
@@ -510,7 +498,7 @@ def analyze_deck_win_rates(csv_file=None, output_file=None):
         try:
             win_rates = np.linspace(0, 1, 100)
             weights = [power_law_weight(wr, power=power, center=center) for wr in win_rates]
-            
+
             plt.figure(figsize=(10, 6))
             plt.plot(win_rates, weights)
             plt.axhline(y=0, color='gray', linestyle='--')
@@ -519,7 +507,7 @@ def analyze_deck_win_rates(csv_file=None, output_file=None):
             plt.ylabel('Weight')
             plt.title(f'Power Law Weighting (Power={power}, Center={center})')
             plt.grid(True)
-            
+
             # Save the visualization in the timestamped directory
             viz_path = os.path.join(os.path.dirname(output_file), 'power_law_weight_function.png')
             plt.savefig(viz_path)
@@ -542,15 +530,15 @@ def main():
     if base_dir is None:
         print("Error: No timestamped directory found. Please run 1_edh16_scrape.py first.")
         return
-    
+
     # Set up file paths
     csv_file = os.path.join(base_dir, "edh16_scrape.csv")
     winrate_output = os.path.join(base_dir, "winrate_analysis.txt")
     tagged_cards_file = os.path.join(base_dir, "tagged_cards.txt")
-    
+
     # Run the analysis
     card_df = analyze_deck_win_rates(csv_file, winrate_output)
-    
+
     # Create spice tags if we have card data
     if not card_df.empty:
         # Check if tagged_cards.txt exists, if not, create it
@@ -558,7 +546,7 @@ def main():
             print(f"Creating new {tagged_cards_file} file")
             with open(tagged_cards_file, 'w', encoding='utf-8') as f:
                 f.write("# This file contains card tags. Format: <count> <card name> #tag1 #tag2\n")
-        
+
         # Append spice tags to the existing tagged_cards.txt
         print(f"\nAppending spice tags to {tagged_cards_file}")
         create_spice_tags(card_df, tagged_cards_file)

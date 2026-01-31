@@ -9,7 +9,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Footer, Input, Label, Static
+from textual.widgets import Footer, Label, Static, TextArea
 
 from .config import DEFAULT_COMMANDER_URL
 from .state import (
@@ -176,7 +176,12 @@ class CEDHAnalyzerApp(App):
     
     #url-input {
         width: 100%;
+        height: 4;
         margin-bottom: 1;
+    }
+    
+    #url-input:focus {
+        border: tall $secondary;
     }
     
     #input-hint {
@@ -316,6 +321,7 @@ class CEDHAnalyzerApp(App):
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("ctrl+c", "quit", "Quit"),
+        Binding("ctrl+enter", "submit_url", "Submit", show=True),
     ]
     
     def __init__(self) -> None:
@@ -336,12 +342,13 @@ class CEDHAnalyzerApp(App):
             
             with Vertical(id="input-section"):
                 yield Label("Enter EDHTop16 Commander URL:")
-                yield Input(
-                    placeholder="https://edhtop16.com/commander/Kraum%2C%20Ludevic's%20Opus%20%2F%20Tymna%20the%20Weaver?timePeriod=SIX_MONTHS&minEventSize=30",
-                    value=DEFAULT_COMMANDER_URL,
+                yield TextArea(
+                    "",
                     id="url-input",
+                    soft_wrap=True,
+                    placeholder=DEFAULT_COMMANDER_URL,
                 )
-                yield Label("Press Enter to start analysis", id="input-hint")
+                yield Label("Press Ctrl+Enter to start analysis (empty = use placeholder)", id="input-hint")
             
             with Vertical(id="progress-section"):
                 yield ProgressStack(id="progress-stack")
@@ -360,18 +367,18 @@ class CEDHAnalyzerApp(App):
             self.call_later(self._show_resume_modal, existing_state)
         else:
             # Focus the input for keyboard-driven interaction
-            url_input = self.query_one("#url-input", Input)
+            url_input = self.query_one("#url-input", TextArea)
             url_input.focus()
     
     def _show_resume_modal(self, existing_state: AnalysisState) -> None:
         """Show the resume modal and handle the result."""
         def handle_result(should_continue: bool) -> None:
-            url_input = self.query_one("#url-input", Input)
+            url_input = self.query_one("#url-input", TextArea)
             
             if should_continue:
                 self.state = existing_state
                 # Update URL input with existing URL
-                url_input.value = existing_state.commander_url
+                url_input.load_text(existing_state.commander_url)
                 
                 # Update progress display
                 progress_stack = self.query_one("#progress-stack", ProgressStack)
@@ -388,18 +395,18 @@ class CEDHAnalyzerApp(App):
         
         self.push_screen(ResumeModal(existing_state), handle_result)
     
-    @on(Input.Submitted, "#url-input")
-    async def start_analysis(self) -> None:
+    def action_submit_url(self) -> None:
         """Start or resume the analysis pipeline."""
         if self._analysis_running:
             return
         
-        url_input = self.query_one("#url-input", Input)
-        commander_url = url_input.value.strip()
+        url_input = self.query_one("#url-input", TextArea)
+        commander_url = url_input.text.strip()
         
+        # Use default URL if empty
         if not commander_url:
-            self.notify("Please enter a commander URL", severity="error")
-            return
+            commander_url = DEFAULT_COMMANDER_URL
+            url_input.load_text(commander_url)
         
         if not commander_url.startswith("http"):
             self.notify("Invalid URL format", severity="error")
@@ -477,11 +484,11 @@ class CEDHAnalyzerApp(App):
     def _reset_input(self) -> None:
         """Reset the input to enabled state."""
         self._analysis_running = False
-        url_input = self.query_one("#url-input", Input)
+        url_input = self.query_one("#url-input", TextArea)
         url_input.disabled = False
         url_input.focus()
         hint = self.query_one("#input-hint", Label)
-        hint.update("Press Enter to start analysis")
+        hint.update("Press Ctrl+Enter to start analysis")
     
     def _finalize_analysis(self) -> None:
         """Finalize the analysis - copy to clipboard and cleanup."""

@@ -7,7 +7,7 @@ APP_NAME = "cEDH Analyzer"
 APP_VERSION = "2.0.0"
 
 # Default commander URL (popular cEDH commander)
-DEFAULT_COMMANDER_URL = ("")
+DEFAULT_COMMANDER_URL = ("https://edhtop16.com/commander/Kraum%2C%20Ludevic's%20Opus%20%2F%20Tymna%20the%20Weaver?timePeriod=SIX_MONTHS")
 
 # Data directories
 DATA_DIR = Path(".cedh_data")

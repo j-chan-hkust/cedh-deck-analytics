@@ -4,6 +4,9 @@
 
 A modern terminal UI application for analyzing competitive EDH (cEDH) decklists. Built with Python 3.11+, Textual for the TUI, and uv for package management.
 
+## User Feedback
+In the case the user uses unclear/vague language that does not adhere to industry standard terms, ask for clarification, and suggest alternative wording to help user learn standard language.
+
 ## Architecture
 
 ### Application Flow

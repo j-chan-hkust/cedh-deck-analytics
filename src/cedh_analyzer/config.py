@@ -7,10 +7,7 @@ APP_NAME = "cEDH Analyzer"
 APP_VERSION = "2.0.0"
 
 # Default commander URL (popular cEDH commander)
-DEFAULT_COMMANDER_URL = (
-    "https://edhtop16.com/commander/Kinnan%2C%20Bonder%20Prodigy"
-    "?timePeriod=ONE_MONTH&minEventSize=100"
-)
+DEFAULT_COMMANDER_URL = ("")
 
 # Data directories
 DATA_DIR = Path(".cedh_data")

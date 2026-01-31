@@ -309,7 +309,7 @@ class CEDHAnalyzerApp(App):
             with Vertical(id="input-section"):
                 yield Label("Enter EDHTop16 Commander URL:")
                 yield Input(
-                    placeholder="https://edhtop16.com/commander/...",
+                    placeholder="https://edhtop16.com/commander/Kraum%2C%20Ludevic's%20Opus%20%2F%20Tymna%20the%20Weaver?timePeriod=SIX_MONTHS&minEventSize=30",
                     value=DEFAULT_COMMANDER_URL,
                     id="url-input",
                 )

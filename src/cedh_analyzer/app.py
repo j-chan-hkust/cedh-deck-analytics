@@ -1,25 +1,23 @@
 """Main Textual application for cEDH Analyzer."""
 
-import asyncio
-import shutil
 from pathlib import Path
 
+import darkdetect
 import pyperclip
 import pyfiglet
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Center, Container, Horizontal, Vertical
+from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Footer, Input, Label, Static
+from textual.widgets import Footer, Input, Label, Static
 
-from .config import APP_NAME, DEFAULT_COMMANDER_URL, DATA_DIR
+from .config import DEFAULT_COMMANDER_URL
 from .state import (
     AnalysisState,
     clear_state,
     initialize_new_run,
     load_state,
-    save_state,
 )
 from .stages import (
     BasicAnalyticsStage,
@@ -36,11 +34,15 @@ class ResumeModal(ModalScreen[bool]):
     
     BINDINGS = [
         Binding("escape", "cancel", "Cancel"),
+        Binding("left", "select_continue", "Continue", show=False),
+        Binding("right", "select_fresh", "Start Fresh", show=False),
+        Binding("enter", "confirm", "Confirm"),
     ]
     
     def __init__(self, state: AnalysisState) -> None:
         super().__init__()
         self.existing_state = state
+        self._selected_continue = True  # Default to continue
     
     def compose(self) -> ComposeResult:
         with Container(id="resume-modal"):
@@ -59,20 +61,39 @@ class ResumeModal(ModalScreen[bool]):
             )
             yield Static("")
             yield Label("What would you like to do?", classes="modal-prompt")
+            yield Label("Use ← → to select, Enter to confirm", classes="modal-hint")
             with Horizontal(id="modal-buttons"):
-                yield Button("Continue", id="btn-continue", variant="primary")
-                yield Button("Start Fresh", id="btn-fresh", variant="warning")
+                yield Static("▶ [Continue]", id="opt-continue", classes="modal-option selected")
+                yield Static("  Start Fresh", id="opt-fresh", classes="modal-option")
     
     def action_cancel(self) -> None:
         self.dismiss(True)  # Default to continue
     
-    @on(Button.Pressed, "#btn-continue")
-    def continue_analysis(self) -> None:
-        self.dismiss(True)
+    def action_select_continue(self) -> None:
+        self._selected_continue = True
+        self._update_selection()
     
-    @on(Button.Pressed, "#btn-fresh")
-    def start_fresh(self) -> None:
-        self.dismiss(False)
+    def action_select_fresh(self) -> None:
+        self._selected_continue = False
+        self._update_selection()
+    
+    def action_confirm(self) -> None:
+        self.dismiss(self._selected_continue)
+    
+    def _update_selection(self) -> None:
+        opt_continue = self.query_one("#opt-continue", Static)
+        opt_fresh = self.query_one("#opt-fresh", Static)
+        
+        if self._selected_continue:
+            opt_continue.update("▶ [Continue]")
+            opt_continue.add_class("selected")
+            opt_fresh.update("  Start Fresh")
+            opt_fresh.remove_class("selected")
+        else:
+            opt_continue.update("  Continue")
+            opt_continue.remove_class("selected")
+            opt_fresh.update("▶ [Start Fresh]")
+            opt_fresh.add_class("selected")
 
 
 class CompletionModal(ModalScreen[None]):
@@ -111,14 +132,12 @@ class CompletionModal(ModalScreen[None]):
                 classes="completion-hint",
             )
             yield Static("")
-            with Center():
-                yield Button("Done", id="btn-done", variant="success")
+            yield Label(
+                "Press Enter to continue",
+                classes="modal-hint",
+            )
     
     def action_dismiss_modal(self) -> None:
-        self.dismiss(None)
-    
-    @on(Button.Pressed, "#btn-done")
-    def done(self) -> None:
         self.dismiss(None)
 
 
@@ -161,9 +180,10 @@ class CEDHAnalyzerApp(App):
         margin-bottom: 1;
     }
     
-    #start-button {
-        width: auto;
-        min-width: 20;
+    #input-hint {
+        color: $text-muted;
+        text-style: italic;
+        text-align: center;
     }
     
     #progress-section {
@@ -252,8 +272,21 @@ class CEDHAnalyzerApp(App):
         align: center middle;
     }
     
-    #modal-buttons Button {
-        margin: 0 1;
+    .modal-option {
+        margin: 0 2;
+        color: $text-muted;
+    }
+    
+    .modal-option.selected {
+        color: $secondary;
+        text-style: bold;
+    }
+    
+    .modal-hint {
+        text-align: center;
+        color: $text-muted;
+        text-style: italic;
+        margin-top: 1;
     }
     
     #clipboard-notice {
@@ -266,10 +299,6 @@ class CEDHAnalyzerApp(App):
         text-align: center;
         color: $text-muted;
         text-style: italic;
-    }
-    
-    #btn-done {
-        margin-top: 1;
     }
     
     #result-preview {
@@ -288,6 +317,7 @@ class CEDHAnalyzerApp(App):
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("ctrl+c", "quit", "Quit"),
+        Binding("d", "toggle_dark", "Toggle Dark Mode"),
     ]
     
     def __init__(self) -> None:
@@ -313,8 +343,7 @@ class CEDHAnalyzerApp(App):
                     value=DEFAULT_COMMANDER_URL,
                     id="url-input",
                 )
-                with Center():
-                    yield Button("Start Analysis", id="start-button", variant="primary")
+                yield Label("Press Enter to start analysis", id="input-hint")
             
             with Vertical(id="progress-section"):
                 yield ProgressStack(id="progress-stack")
@@ -323,18 +352,30 @@ class CEDHAnalyzerApp(App):
         
         yield Footer()
     
-    async def on_mount(self) -> None:
+    def on_mount(self) -> None:
         """Check for existing state on mount."""
+        # Detect system dark/light mode preference
+        system_dark = darkdetect.isDark()
+        self.dark = system_dark if system_dark is not None else False
+        
         existing_state = load_state()
         
         if existing_state.has_existing_run:
-            # Show resume modal
-            should_continue = await self.push_screen_wait(ResumeModal(existing_state))
+            # Show resume modal - defer to allow mount to complete
+            self.call_later(self._show_resume_modal, existing_state)
+        else:
+            # Focus the input for keyboard-driven interaction
+            url_input = self.query_one("#url-input", Input)
+            url_input.focus()
+    
+    def _show_resume_modal(self, existing_state: AnalysisState) -> None:
+        """Show the resume modal and handle the result."""
+        def handle_result(should_continue: bool) -> None:
+            url_input = self.query_one("#url-input", Input)
             
             if should_continue:
                 self.state = existing_state
                 # Update URL input with existing URL
-                url_input = self.query_one("#url-input", Input)
                 url_input.value = existing_state.commander_url
                 
                 # Update progress display
@@ -346,8 +387,13 @@ class CEDHAnalyzerApp(App):
                 # Start fresh
                 clear_state()
                 self.state = None
+            
+            # Focus the input for keyboard-driven interaction
+            url_input.focus()
+        
+        self.push_screen(ResumeModal(existing_state), handle_result)
     
-    @on(Button.Pressed, "#start-button")
+    @on(Input.Submitted, "#url-input")
     async def start_analysis(self) -> None:
         """Start or resume the analysis pipeline."""
         if self._analysis_running:
@@ -365,9 +411,9 @@ class CEDHAnalyzerApp(App):
             return
         
         self._analysis_running = True
-        button = self.query_one("#start-button", Button)
-        button.disabled = True
-        button.label = "Running..."
+        url_input.disabled = True
+        hint = self.query_one("#input-hint", Label)
+        hint.update("Running analysis...")
         
         # Initialize or use existing state
         if self.state is None or self.state.commander_url != commander_url:
@@ -427,18 +473,20 @@ class CEDHAnalyzerApp(App):
                     f"Stage {stage_num} failed: {result.message}",
                     severity="error",
                 )
-                self.call_from_thread(self._reset_button)
+                self.call_from_thread(self._reset_input)
                 return
         
         # All stages complete - finalize
         self.call_from_thread(self._finalize_analysis)
     
-    def _reset_button(self) -> None:
-        """Reset the start button to enabled state."""
+    def _reset_input(self) -> None:
+        """Reset the input to enabled state."""
         self._analysis_running = False
-        button = self.query_one("#start-button", Button)
-        button.disabled = False
-        button.label = "Start Analysis"
+        url_input = self.query_one("#url-input", Input)
+        url_input.disabled = False
+        url_input.focus()
+        hint = self.query_one("#input-hint", Label)
+        hint.update("Press Enter to start analysis")
     
     def _finalize_analysis(self) -> None:
         """Finalize the analysis - copy to clipboard and cleanup."""
@@ -478,7 +526,7 @@ class CEDHAnalyzerApp(App):
         # Clear state (keeps the output files but removes tracking)
         clear_state()
         self.state = None
-        self._reset_button()
+        self._reset_input()
         
         # Reset progress display
         progress_stack = self.query_one("#progress-stack", ProgressStack)

@@ -1,0 +1,107 @@
+# cEDH Analyzer - Project Rules
+
+## Project Overview
+
+A modern terminal UI application for analyzing competitive EDH (cEDH) decklists. Built with Python 3.11+, Textual for the TUI, and uv for package management.
+
+## Architecture
+
+### Application Flow
+```
+User Input (URL) → EDH16 Scrape → Moxfield Scrape → Preprocess → Basic Analytics → Win Rate Analytics → Clipboard
+```
+
+### Key Directories
+| Path | Purpose |
+|------|---------|
+| `src/cedh_analyzer/` | Main application code |
+| `src/cedh_analyzer/stages/` | Pipeline stage implementations |
+| `src/cedh_analyzer/widgets/` | Custom Textual widgets |
+| `.cedh_data/` | Runtime data and state (gitignored) |
+
+### Core Modules
+| Module | Responsibility |
+|--------|---------------|
+| `app.py` | Main Textual app, screens, modals |
+| `config.py` | Constants, thresholds, defaults |
+| `state.py` | State persistence, resume logic |
+| `stages/base.py` | Stage base class and result types |
+
+## Development Commands
+
+```bash
+# Run the application
+uv run cedh
+
+# Run tests
+uv run pytest
+
+# Run with coverage
+uv run pytest --cov=src/cedh_analyzer --cov-report=html
+
+# Type checking
+uv run mypy src/
+
+# Linting
+uv run ruff check src/
+
+# Format code
+uv run ruff format src/
+```
+
+## Code Style
+
+- **Python 3.11+** features encouraged (match statements, type unions with `|`)
+- **Type hints** required for all public functions
+- **Async/await** for I/O operations
+- **Dataclasses** for data structures
+- Follow PEP 8, enforced by Ruff
+
+## Textual UI Guidelines
+
+1. **Reactive properties** for dynamic updates
+2. **CSS-in-Python** for styling (App.CSS attribute)
+3. **Compose pattern** for widget composition
+4. **Screen/Modal** separation for different views
+5. **Workers** for background tasks
+
+## Stage Implementation
+
+All stages inherit from `Stage` base class:
+
+```python
+class MyStage(Stage):
+    name = "Stage Name"
+    description = "What this stage does"
+    
+    def is_complete(self) -> bool:
+        return self.state.stage_my_complete
+    
+    async def run(self) -> StageResult:
+        self.report_progress(0.0, "Starting...")
+        # ... do work ...
+        self.report_progress(1.0, "Done!")
+        return StageResult(success=True, message="Complete")
+```
+
+## State Management
+
+- State persisted in `.cedh_data/state.json`
+- Each stage completion updates state
+- Resume detection on app startup
+- `clear_state()` removes all data for fresh start
+
+## Web Scraping Rules
+
+1. Use `selenium-stealth` to avoid detection
+2. Implement random delays between requests
+3. Handle retries gracefully
+4. Cache downloaded data locally
+5. Never scrape more than necessary
+
+## Testing
+
+- Use `pytest` with `pytest-asyncio` for async tests
+- Mock Selenium and network calls
+- Test stage isolation (each stage independently)
+- Aim for >80% coverage on new code

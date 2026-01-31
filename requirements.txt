@@ -1,8 +1,0 @@
-beautifulsoup4
-selenium
-pandas
-webdriver-manager
-selenium-stealth
-numpy
-matplotlib
-requests

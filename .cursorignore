@@ -1,0 +1,7 @@
+# Ignore generated data
+.cedh_data/
+temp/
+
+# Ignore build artifacts
+dist/
+*.egg-info/

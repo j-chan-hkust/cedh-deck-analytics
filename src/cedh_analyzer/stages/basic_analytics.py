@@ -36,17 +36,12 @@ class BasicAnalyticsStage(Stage):
         if not deck_files:
             return StageResult(success=False, message="No processed decks to analyze")
         
-        self.report_progress(0.0, f"Analyzing {len(deck_files)} decklists...")
-        
         # Count card occurrences
         card_counts = Counter()
         card_quantities: dict[str, int] = {}
         total_decks = len(deck_files)
         
         for idx, file_path in enumerate(deck_files):
-            progress = (idx + 1) / total_decks * 0.7
-            self.report_progress(progress, f"Analyzing {file_path.name}...")
-            
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     cards = [line.strip() for line in f if line.strip()]
@@ -70,8 +65,6 @@ class BasicAnalyticsStage(Stage):
             
             except Exception:
                 pass
-        
-        self.report_progress(0.8, "Calculating usage percentages...")
         
         # Calculate usage percentages and assign tags
         tagged_cards = []
@@ -108,8 +101,6 @@ class BasicAnalyticsStage(Stage):
         self.state.cards_analyzed = len(card_counts)
         self.state.stage_basic_analytics_complete = True
         save_state(self.state)
-        
-        self.report_progress(1.0, f"Found {len(tagged_cards)} core/essential/common cards")
         
         return StageResult(
             success=True,

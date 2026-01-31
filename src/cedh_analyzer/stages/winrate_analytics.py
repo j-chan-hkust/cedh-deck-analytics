@@ -50,8 +50,6 @@ class WinrateAnalyticsStage(Stage):
                 message="Required data files not found. Run previous stages first.",
             )
         
-        self.report_progress(0.0, "Loading tournament data...")
-        
         try:
             # Load tournament data
             df = pd.read_csv(csv_file)
@@ -66,8 +64,6 @@ class WinrateAnalyticsStage(Stage):
             
             df["win_rate"] = df["win_rate"].fillna(0.25)
             df["power_weight"] = df["win_rate"].apply(power_law_weight)
-            
-            self.report_progress(0.2, "Analyzing card performance...")
             
             # Build card statistics
             card_dict: dict[str, dict] = defaultdict(
@@ -95,10 +91,6 @@ class WinrateAnalyticsStage(Stage):
                     card_dict[card]["power_law_sum"] += deck_weight
                 
                 processed_decks += 1
-                progress = 0.2 + (idx / len(df)) * 0.5
-                self.report_progress(progress, f"Processing deck {idx + 1}/{len(df)}")
-            
-            self.report_progress(0.75, "Calculating spice tags...")
             
             # Create DataFrame for analysis
             card_df = pd.DataFrame.from_dict(card_dict, orient="index")
@@ -164,8 +156,6 @@ class WinrateAnalyticsStage(Stage):
                 if card not in additional_tags:
                     additional_tags[card] = TAGS["bad_cards"]
             
-            self.report_progress(0.9, "Updating tagged cards file...")
-            
             # Update tagged_cards.txt
             self._update_tagged_cards(tagged_file, spice_tags, additional_tags)
             
@@ -174,8 +164,6 @@ class WinrateAnalyticsStage(Stage):
             
             self.state.stage_winrate_analytics_complete = True
             save_state(self.state)
-            
-            self.report_progress(1.0, "Analysis complete")
             
             spice_count = len(spice_tags)
             trap_count = sum(1 for t in additional_tags.values() if t == TAGS["potential_traps"])

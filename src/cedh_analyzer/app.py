@@ -25,7 +25,6 @@ from .stages import (
     PreprocessStage,
     WinrateAnalyticsStage,
 )
-from .widgets import ProgressStack
 
 
 class ResumeModal(ModalScreen[bool]):
@@ -165,56 +164,6 @@ class CEDHAnalyzerApp(App):
         text-align: center;
     }
     
-    #progress-section {
-        height: auto;
-        padding: 1 2;
-        border: tall $primary;
-        margin-top: 1;
-    }
-    
-    .section-header {
-        text-style: bold;
-        color: $secondary;
-        margin-bottom: 1;
-    }
-    
-    .stage-progress {
-        height: auto;
-        margin-bottom: 1;
-        padding: 0 1;
-    }
-    
-    .stage-progress.active {
-        background: $primary 20%;
-    }
-    
-    .stage-progress.complete {
-        background: $success 15%;
-    }
-    
-    .stage-progress.error {
-        background: $error 20%;
-    }
-    
-    .status-text {
-        color: $text-muted;
-        text-style: italic;
-        margin-left: 2;
-    }
-    
-    .stage-progress.complete .status-text {
-        color: $success;
-        text-style: bold;
-    }
-    
-    .stage-progress.error .status-text {
-        color: $error;
-    }
-    
-    ProgressBar {
-        padding: 0 2;
-    }
-    
     /* Modal Styles */
     ResumeModal, CompletionModal {
         align: center middle;
@@ -321,9 +270,6 @@ class CEDHAnalyzerApp(App):
                 )
                 yield Label("Press Ctrl+Enter to start analysis (empty = use placeholder)", id="input-hint")
             
-            with Vertical(id="progress-section"):
-                yield ProgressStack(id="progress-stack")
-            
             yield Static("", id="result-preview")
         
         yield Footer()
@@ -350,12 +296,6 @@ class CEDHAnalyzerApp(App):
                 self.state = existing_state
                 # Update URL input with existing URL
                 url_input.load_text(existing_state.commander_url)
-                
-                # Update progress display
-                progress_stack = self.query_one("#progress-stack", ProgressStack)
-                if existing_state.current_stage > 1:
-                    for i in range(1, existing_state.current_stage):
-                        progress_stack.set_stage_complete(i)
             else:
                 # Start fresh
                 clear_state()
@@ -404,8 +344,6 @@ class CEDHAnalyzerApp(App):
         if not self.state:
             return
         
-        progress_stack = self.query_one("#progress-stack", ProgressStack)
-        
         stages = [
             (1, EDH16ScrapeStage),
             (2, MoxfieldScrapeStage),
@@ -417,30 +355,12 @@ class CEDHAnalyzerApp(App):
         for stage_num, stage_class in stages:
             if self.state.current_stage > stage_num:
                 # Already complete
-                self.call_from_thread(progress_stack.set_stage_complete, stage_num)
                 continue
             
-            self.call_from_thread(progress_stack.set_stage_active, stage_num)
-            
-            def progress_callback(progress: float, message: str) -> None:
-                self.call_from_thread(
-                    progress_stack.update_stage_progress,
-                    stage_num,
-                    progress,
-                    message,
-                )
-            
-            stage = stage_class(self.state, progress_callback)
+            stage = stage_class(self.state)
             result = await stage.run()
             
-            if result.success:
-                self.call_from_thread(progress_stack.set_stage_complete, stage_num)
-            else:
-                self.call_from_thread(
-                    progress_stack.set_stage_error,
-                    stage_num,
-                    result.message,
-                )
+            if not result.success:
                 self.call_from_thread(
                     self.notify,
                     f"Stage {stage_num} failed: {result.message}",
@@ -496,10 +416,6 @@ class CEDHAnalyzerApp(App):
         clear_state()
         self.state = None
         self._reset_input()
-        
-        # Reset progress display
-        progress_stack = self.query_one("#progress-stack", ProgressStack)
-        progress_stack.reset()
         
         self.notify("Analysis complete! Results copied to clipboard.", severity="information")
 

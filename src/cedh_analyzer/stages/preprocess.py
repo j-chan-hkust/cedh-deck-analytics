@@ -36,15 +36,10 @@ class PreprocessStage(Stage):
         if not deck_files:
             return StageResult(success=False, message="No deck files to process")
         
-        self.report_progress(0.0, f"Processing {len(deck_files)} decklists...")
-        
         processed_count = 0
         total_cards = 0
         
         for idx, file_path in enumerate(deck_files):
-            progress = (idx + 1) / len(deck_files)
-            self.report_progress(progress * 0.9, f"Processing {file_path.name}...")
-            
             try:
                 cards = self._process_decklist(file_path)
                 
@@ -62,8 +57,6 @@ class PreprocessStage(Stage):
         
         self.state.stage_preprocess_complete = True
         save_state(self.state)
-        
-        self.report_progress(1.0, f"Processed {processed_count} decklists")
         
         return StageResult(
             success=True,

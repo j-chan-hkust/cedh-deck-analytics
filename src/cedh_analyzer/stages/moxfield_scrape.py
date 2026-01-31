@@ -47,8 +47,6 @@ class MoxfieldScrapeStage(Stage):
                 message="EDH16 scrape data not found. Run stage 1 first.",
             )
         
-        self.report_progress(0.0, "Reading deck list...")
-        
         # Load deck data
         decks = self._load_deck_data(csv_file)
         if not decks:
@@ -70,8 +68,6 @@ class MoxfieldScrapeStage(Stage):
                 message=f"All {total} decklists already downloaded",
             )
         
-        self.report_progress(0.05, f"Scraping {len(remaining)} remaining decklists...")
-        
         try:
             scraped = await asyncio.to_thread(
                 self._scrape_decklists,
@@ -84,8 +80,6 @@ class MoxfieldScrapeStage(Stage):
             self.state.decks_scraped = already_done + scraped
             self.state.stage_moxfield_complete = True
             save_state(self.state)
-            
-            self.report_progress(1.0, f"Downloaded {self.state.decks_scraped} decklists")
             
             return StageResult(
                 success=True,
@@ -168,11 +162,6 @@ class MoxfieldScrapeStage(Stage):
         try:
             for idx, deck in enumerate(decks):
                 current = already_done + idx + 1
-                progress = 0.05 + (current / total) * 0.9
-                self.report_progress(
-                    progress,
-                    f"Scraping deck {current}/{total}: {deck.get('name', 'Unknown')[:30]}",
-                )
                 
                 url = deck["url"]
                 deck_id = deck["deck_id"]

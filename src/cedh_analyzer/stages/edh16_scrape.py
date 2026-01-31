@@ -39,8 +39,6 @@ class EDH16ScrapeStage(Stage):
         if self.is_complete():
             return StageResult(success=True, message="Already complete")
         
-        self.report_progress(0.0, "Initializing browser...")
-        
         try:
             data = await asyncio.to_thread(
                 self._scrape_edh16, self.state.commander_url
@@ -57,7 +55,6 @@ class EDH16ScrapeStage(Stage):
             output_dir.mkdir(parents=True, exist_ok=True)
             output_file = output_dir / "edh16_scrape.csv"
             
-            self.report_progress(0.9, "Saving tournament data...")
             self._save_to_csv(data, output_file)
             
             # Update state
@@ -65,8 +62,6 @@ class EDH16ScrapeStage(Stage):
             self.state.deck_count = len(data["decks"])
             self.state.stage_edh16_complete = True
             save_state(self.state)
-            
-            self.report_progress(1.0, f"Found {len(data['decks'])} decks")
             
             return StageResult(
                 success=True,
@@ -88,7 +83,6 @@ class EDH16ScrapeStage(Stage):
         driver = webdriver.Chrome(options=chrome_options)
         
         try:
-            self.report_progress(0.1, "Loading page...")
             driver.get(url)
             time.sleep(3)
             
@@ -121,11 +115,6 @@ class EDH16ScrapeStage(Stage):
                                 element.click()
                                 click_count += 1
                                 button_found = True
-                                
-                                progress = min(0.1 + (click_count / max_clicks) * 0.7, 0.8)
-                                self.report_progress(
-                                    progress, f"Loading more decks... ({click_count})"
-                                )
                                 time.sleep(2)
                                 break
                         if button_found:
@@ -135,8 +124,6 @@ class EDH16ScrapeStage(Stage):
                 
                 if not button_found:
                     break
-            
-            self.report_progress(0.85, "Parsing deck data...")
             
             # Parse the page
             soup = BeautifulSoup(driver.page_source, "html.parser")

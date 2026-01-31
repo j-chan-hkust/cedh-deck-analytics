@@ -32,67 +32,42 @@ class ResumeModal(ModalScreen[bool]):
     """Modal dialog for resuming or starting fresh."""
     
     BINDINGS = [
-        Binding("escape", "cancel", "Cancel"),
-        Binding("left", "select_continue", "Continue", show=False),
-        Binding("right", "select_fresh", "Start Fresh", show=False),
-        Binding("enter", "confirm", "Confirm"),
+        Binding("escape", "start_fresh", "Start Fresh", show=True),
+        Binding("enter", "continue_analysis", "Continue", show=True),
     ]
     
     def __init__(self, state: AnalysisState) -> None:
         super().__init__()
         self.existing_state = state
-        self._selected_continue = True  # Default to continue
+    
+    def _format_commander_name(self, name: str | None) -> str:
+        """Decode URL-encoded commander name."""
+        if not name:
+            return "Unknown"
+        from urllib.parse import unquote
+        return unquote(name)
     
     def compose(self) -> ComposeResult:
-        with Container(id="resume-modal"):
-            yield Label("Existing Analysis Found", id="modal-title")
-            yield Label(
-                f"Commander: {self.existing_state.commander_name or 'Unknown'}",
-                classes="modal-info",
-            )
-            yield Label(
-                f"Progress: Stage {self.existing_state.current_stage}/5",
-                classes="modal-info",
-            )
-            yield Label(
-                f"Decks processed: {self.existing_state.decks_scraped}/{self.existing_state.deck_count}",
-                classes="modal-info",
-            )
-            yield Static("")
-            yield Label("What would you like to do?", classes="modal-prompt")
-            yield Label("Use ← → to select, Enter to confirm", classes="modal-hint")
-            with Horizontal(id="modal-buttons"):
-                yield Static("▶ [Continue]", id="opt-continue", classes="modal-option selected")
-                yield Static("  Start Fresh", id="opt-fresh", classes="modal-option")
-    
-    def action_cancel(self) -> None:
-        self.dismiss(True)  # Default to continue
-    
-    def action_select_continue(self) -> None:
-        self._selected_continue = True
-        self._update_selection()
-    
-    def action_select_fresh(self) -> None:
-        self._selected_continue = False
-        self._update_selection()
-    
-    def action_confirm(self) -> None:
-        self.dismiss(self._selected_continue)
-    
-    def _update_selection(self) -> None:
-        opt_continue = self.query_one("#opt-continue", Static)
-        opt_fresh = self.query_one("#opt-fresh", Static)
+        commander = self._format_commander_name(self.existing_state.commander_name)
+        progress = self.existing_state.current_stage
+        decks_done = self.existing_state.decks_scraped
+        decks_total = self.existing_state.deck_count
         
-        if self._selected_continue:
-            opt_continue.update("▶ [Continue]")
-            opt_continue.add_class("selected")
-            opt_fresh.update("  Start Fresh")
-            opt_fresh.remove_class("selected")
-        else:
-            opt_continue.update("  Continue")
-            opt_continue.remove_class("selected")
-            opt_fresh.update("▶ [Start Fresh]")
-            opt_fresh.add_class("selected")
+        with Container(id="resume-modal"):
+            yield Label("⏸ Existing Analysis Found", id="modal-title")
+            yield Static("")
+            yield Label(f"Commander: {commander}", classes="modal-info")
+            yield Label(f"Progress: Stage {progress}/5", classes="modal-info")
+            yield Label(f"Decks processed: {decks_done}/{decks_total}", classes="modal-info")
+            yield Static("")
+            yield Label("Press Enter to continue", id="resume-continue-hint")
+            yield Label("Press Esc to start a new analysis", id="resume-fresh-hint")
+    
+    def action_start_fresh(self) -> None:
+        self.dismiss(False)
+    
+    def action_continue_analysis(self) -> None:
+        self.dismiss(True)
 
 
 class CompletionModal(ModalScreen[None]):
@@ -241,12 +216,17 @@ class CEDHAnalyzerApp(App):
     }
     
     /* Modal Styles */
+    ResumeModal, CompletionModal {
+        align: center middle;
+    }
+    
     #resume-modal, #completion-modal {
-        width: 60;
+        width: 80%;
+        max-width: 100;
         height: auto;
-        padding: 2 3;
+        padding: 2 4;
         background: $surface;
-        border: tall $primary;
+        border: heavy $primary;
     }
     
     #modal-title, #completion-title {
@@ -262,28 +242,19 @@ class CEDHAnalyzerApp(App):
     
     .modal-info, .completion-info {
         text-align: center;
-        margin: 0 1;
+        padding: 0 2;
     }
     
-    .modal-prompt {
+    #resume-continue-hint {
         text-align: center;
-        margin-top: 1;
-    }
-    
-    #modal-buttons {
-        margin-top: 1;
-        height: auto;
-        align: center middle;
-    }
-    
-    .modal-option {
-        margin: 0 2;
-        color: $text-muted;
-    }
-    
-    .modal-option.selected {
-        color: $secondary;
+        color: $success;
         text-style: bold;
+        margin-top: 1;
+    }
+    
+    #resume-fresh-hint {
+        text-align: center;
+        color: $text-muted;
     }
     
     .modal-hint {

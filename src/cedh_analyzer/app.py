@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-import darkdetect
 import pyperclip
 import pyfiglet
 from textual import on, work
@@ -317,7 +316,6 @@ class CEDHAnalyzerApp(App):
     BINDINGS = [
         Binding("q", "quit", "Quit"),
         Binding("ctrl+c", "quit", "Quit"),
-        Binding("d", "toggle_dark", "Toggle Dark Mode"),
     ]
     
     def __init__(self) -> None:
@@ -354,10 +352,7 @@ class CEDHAnalyzerApp(App):
     
     def on_mount(self) -> None:
         """Check for existing state on mount."""
-        # Detect system dark/light mode preference
-        system_dark = darkdetect.isDark()
-        self.dark = system_dark if system_dark is not None else False
-        
+        self.theme = "nord"
         existing_state = load_state()
         
         if existing_state.has_existing_run:

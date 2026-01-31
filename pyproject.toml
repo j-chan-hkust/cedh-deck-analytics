@@ -17,7 +17,6 @@ dependencies = [
     "pyperclip>=1.8.2",
     "httpx>=0.25.0",
     "rich>=13.7.0",
-    "darkdetect>=0.8.0",
 ]
 
 [project.scripts]

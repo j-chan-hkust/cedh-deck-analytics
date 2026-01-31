@@ -479,20 +479,16 @@ class CEDHAnalyzerApp(App):
             except Exception:
                 self.notify("Could not copy to clipboard", severity="warning")
         
-        # Show completion modal
+        # Show completion modal with callback for cleanup after dismissal
         stats = {
             "decks": self.state.decks_scraped,
             "cards": self.state.cards_analyzed,
         }
         
-        async def show_completion() -> None:
-            await self.push_screen_wait(
-                CompletionModal(self.state.commander_name, stats)
-            )
-            # Cleanup after modal is dismissed
-            self._cleanup()
-        
-        self.call_later(show_completion)
+        self.push_screen(
+            CompletionModal(self.state.commander_name, stats),
+            callback=lambda _: self._cleanup(),
+        )
     
     def _cleanup(self) -> None:
         """Clean up state files after successful completion."""
